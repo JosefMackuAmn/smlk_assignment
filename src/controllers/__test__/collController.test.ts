@@ -23,6 +23,18 @@ const getJwt = async (nick: string = 'MyCoolNick') => {
     return body.jwt;
 }
 
+const createCollection = async (jwt: string, collName: string = 'MyCollection') => {
+    await supertest(app)
+        .post('/coll')
+        .send({
+            name: 'MyCollection',
+            token: jwt
+        })
+        .expect(201)
+
+    return collName;
+}
+
 describe('POST /coll', () => {
     it('sends 400 on invalid data', async () => {
         const token = await getJwt();
@@ -109,3 +121,66 @@ describe('POST /coll', () => {
         expect(collCount).toEqual(2);
     });
 });
+
+
+describe('GET /coll/:collName', () => {});
+
+
+describe('DELETE /coll/:collName', () => {});
+
+
+describe('POST /coll/:collName/:storyId', () => {
+    it('sends 400 on invalid data', async () => {
+        const token = await getJwt();
+        const collName = await createCollection(token);
+
+        const res = await supertest(app)
+            .post(`/coll/${collName}/abc`)
+            .send({ token })
+            .expect(400)
+
+        expect(res.body.errors.length).toEqual(1);
+    });
+
+    it('sends 404 on non-existent collection', async () => {
+        const token = await getJwt();
+
+        await supertest(app)
+            .post(`/coll/abc/123`)
+            .send({ token })
+            .expect(404)
+    });
+
+    it('sends 404 on non-existent story', async () => {
+        const token = await getJwt();
+        const collName = await createCollection(token);
+
+        await supertest(app)
+            .post(`/coll/${collName}/1230000000000000`)  // TODO: MOCK
+            .send({ token })
+            .expect(404)
+    });
+
+    it('sends 422 on unprocessable item type', async () => {
+        const token = await getJwt();
+        const collName = await createCollection(token);
+
+        await supertest(app)
+            .post(`/coll/${collName}/192327`)  // TODO: MOCK
+            .send({ token })
+            .expect(422)
+    });
+
+    it('sends 201 on successful adition', async () => {
+        const token = await getJwt();
+        const collName = await createCollection(token);
+
+        await supertest(app)
+            .post(`/coll/${collName}/123`)  // TODO: MOCK
+            .send({ token })
+            .expect(201)
+    });
+});
+
+
+describe('DELETE /coll/:collName/:storyId', () => {});

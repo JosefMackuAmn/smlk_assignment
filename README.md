@@ -56,7 +56,6 @@ All the routes send *Content-Type: application/json* header. Potential error mes
             - 400 on invalid data
             - 404 on non-existent collection
             - 404 on non-existent story
-            - 409 on already included story
             - 422 on unprocessable item type
             - 201 on successful addition
     - **DELETE /coll/<collection_name>/<story_id: number>**  

@@ -6,6 +6,8 @@ import { CollItem } from '../models/CollItem';
 import { Item } from '../models/Item';
 import { User } from '../models/User';
 
+jest.setTimeout(30000);
+
 beforeAll(async () => {
     await sequelize.sync({ force: true });
 });
