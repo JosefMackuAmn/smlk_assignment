@@ -7,7 +7,7 @@ import { validate } from '../middleware/validate';
 
 const router = express.Router();
 
-router.post('', [
+const validators = [
     body('nick')
         .notEmpty()
         .withMessage('nick must not be empty'),
@@ -15,7 +15,10 @@ router.post('', [
         .notEmpty()
         .isLength({ min: 5 })
         .withMessage('password has to be at least 5 characters long')
-], validate, ash(authController.postNewUser));
-router.post('/login', ash(authController.postLogin));
+];
+
+router.post('', validators, validate, ash(authController.postNewUser));
+
+router.post('/login', validators, validate, ash(authController.postLogin));
 
 export { router as authRouter };
