@@ -17,7 +17,7 @@ interface UserInstance extends Model<UserAttrs, UserCreationAttrs>, UserAttrs {
     createCollection: HasManyCreateAssociationMixin<typeof Collection>;
 };
 
-const User = sequelize.define<UserInstance>('user', {
+const User = sequelize.define<UserInstance, UserAttrs>('user', {
     nick: {
         type: DataTypes.STRING,
         primaryKey: true,

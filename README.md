@@ -53,15 +53,15 @@ All the routes send *Content-Type: application/json* header. Potential error mes
     - **POST /coll/<collection_name>/<story_id>**  
         *Adds new HackerNews story into a collection*
         1. Sends:
-            - ***???? /coll//123456***
+            - 400 on invalid data
             - 404 on non-existent collection
-            - 404 on non-existent story id
+            - 404 on non-existent story
             - 409 on already included story
             - 201 on successful addition
-    - **DELETE /coll/<collection_name>/<story_id>**  
+    - **DELETE /coll/<collection_name>/<story_id: number>**  
         *Removes a story from collection*
         1. Sends:
-            - ***???? /coll//123456***
+            - 400 on invalid data
             - 404 on non-existent collection
             - 404 on non-existent story
             - 200 on successful deletion

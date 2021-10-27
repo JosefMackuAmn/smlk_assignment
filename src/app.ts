@@ -8,6 +8,8 @@ import { CustomError } from './errors/CustomError';
 
 import { Collection } from './models/Collection';
 import { User } from './models/User';
+import { Item } from './models/Item';
+import { CollItem } from './models/CollItem';
 
 const app = express();
 
@@ -48,5 +50,8 @@ Collection.belongsTo(User, {
     onDelete: 'CASCADE'
 });
 User.hasMany(Collection);
+
+Item.belongsToMany(Collection, { through: CollItem });
+Collection.belongsToMany(Item, { through: CollItem });
 
 export { app };

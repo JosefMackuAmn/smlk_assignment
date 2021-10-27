@@ -14,9 +14,7 @@ export const postNewUser = async (req: Request, res: Response) => {
 
     // Check for existing user with the same nick
     const sameNickUser = await User.findByPk(nick);
-    if (sameNickUser) {
-        throw new SourceExistsError();
-    }
+    if (sameNickUser) throw new SourceExistsError();
 
     // Hash password
     const salt = await bcrypt.genSalt();
@@ -39,15 +37,11 @@ export const postLogin = async (req: Request, res: Response) => {
 
     // Fetch user by nick
     const user = await User.findByPk(nick);
-    if (!user) {
-        throw new InvalidCredentialsError();
-    }
+    if (!user) throw new InvalidCredentialsError();
 
     // Compare passwords
     const pwdMatch = await bcrypt.compare(password, user.password);
-    if (!pwdMatch) {
-        throw new InvalidCredentialsError();
-    }
+    if (!pwdMatch) throw new InvalidCredentialsError();
 
     const token = jwt.sign({ nick }, process.env.TOKEN_KEY, {
         expiresIn: '2h'
