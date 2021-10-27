@@ -109,9 +109,3 @@ describe('POST /coll', () => {
         expect(collCount).toEqual(2);
     });
 });
-
-/*
-400 on invalid data
-            - 409 on collection name collision
-            - 201 on successful collection creation
-            */
