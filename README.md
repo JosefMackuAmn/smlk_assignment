@@ -1,6 +1,6 @@
 # Prerequisites
 
-Install and run local MySQL server and create a database named 'smlk' and 'smlk_test'
+Install and run local MySQL server and create a database named 'smlk' and 'smlk_test'.
 
 # Running the API
 

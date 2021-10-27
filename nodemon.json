@@ -3,6 +3,6 @@
     "ext": ".ts,.js",
     "ignore": [],
     "env": {
-        "TOKEN_KEY": "youWontGuessIt"
+        "TOKEN_KEY": "YouWontGuessIt"
     }
 }
