@@ -31,7 +31,7 @@ All the routes send *Content-Type: application/json* header. Potential error mes
             - 401 on invalid credentials
             - 200 and { jwt: *your_jwt* } on successful login
 - **/coll**  
-    All /coll routes expect a JWT sent as a token property on body. If the JWT is invalid or expired, expect 401.
+    All /coll routes expect a JWT sent as a *token* property on body. If the JWT is invalid or expired, expect 401.
     - **POST /coll**  
         *Creates new collection*
         1. Expects:
@@ -57,6 +57,7 @@ All the routes send *Content-Type: application/json* header. Potential error mes
             - 404 on non-existent collection
             - 404 on non-existent story
             - 409 on already included story
+            - 422 on unprocessable item type
             - 201 on successful addition
     - **DELETE /coll/<collection_name>/<story_id: number>**  
         *Removes a story from collection*

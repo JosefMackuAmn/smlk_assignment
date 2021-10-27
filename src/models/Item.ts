@@ -1,4 +1,4 @@
-import { DataTypes, Model, Optional } from "sequelize";
+import { DataTypes, Model } from "sequelize";
 
 import { sequelize } from '../connection';
 
@@ -11,11 +11,11 @@ export interface ItemAttrs {
     id: number;
     deleted: boolean | undefined;
     type: ItemTypesEnum;
-    by: string;
+    by: string | undefined;
     time: number;
     text: string | undefined;
     dead: boolean | undefined;
-    parentId: number | undefined;
+    parent: number | undefined;
     url: string | undefined;
     score: number | undefined;
     title: string | undefined;
@@ -48,7 +48,7 @@ const Item = sequelize.define<ItemInstance, ItemAttrs>('item', {
     },
     by: {
         type: DataTypes.STRING,
-        allowNull: false
+        defaultValue: null
     },
     time: {
         type: DataTypes.INTEGER,
@@ -60,7 +60,7 @@ const Item = sequelize.define<ItemInstance, ItemAttrs>('item', {
         allowNull: false,
         defaultValue: false
     },
-    parentId: DataTypes.INTEGER,
+    parent: DataTypes.INTEGER,
     url: DataTypes.STRING,
     score: DataTypes.INTEGER,
     title: DataTypes.STRING,
