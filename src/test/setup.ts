@@ -6,7 +6,7 @@ import { CollItem } from '../models/CollItem';
 import { Item } from '../models/Item';
 import { User } from '../models/User';
 
-jest.setTimeout(30000);
+jest.setTimeout(25000);
 
 beforeAll(async () => {
     await sequelize.sync({ force: true });
@@ -18,6 +18,7 @@ beforeEach(async () => {
     await User.truncate();
     await Item.truncate();
     await sequelize.sync({ force: true });
+    jest.clearAllMocks();
     // await sequelize.truncate({ cascade: true });
 });
 

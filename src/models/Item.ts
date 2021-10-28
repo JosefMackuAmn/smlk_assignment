@@ -9,23 +9,22 @@ export enum ItemTypesEnum {
 
 export interface ItemAttrs {
     id: number;
-    deleted: boolean | undefined;
-    type: ItemTypesEnum;
-    by: string | undefined;
+    deleted?: boolean;
+    type: string;
+    by?: string;
     time: number;
-    text: string | undefined;
-    dead: boolean | undefined;
-    parent: number | undefined;
-    url: string | undefined;
-    score: number | undefined;
-    title: string | undefined;
-    descendants: number | undefined;
-    collectionId: number;
+    text?: string;
+    dead?: boolean;
+    parent?: number;
+    url?: string;
+    score?: number;
+    title?: string;
+    descendants?: number;
 }
 
 interface ItemCreationAttrs extends ItemAttrs {};
 
-interface ItemInstance extends Model<ItemAttrs, ItemCreationAttrs>, ItemAttrs {
+export interface ItemInstance extends Model<ItemAttrs, ItemCreationAttrs>, ItemAttrs {
     createdAt: Date;
     updatedAt: Date;
 };
@@ -54,7 +53,7 @@ const Item = sequelize.define<ItemInstance, ItemAttrs>('item', {
         type: DataTypes.INTEGER,
         allowNull: false
     },
-    text: DataTypes.STRING,
+    text: DataTypes.TEXT,
     dead: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
@@ -64,11 +63,7 @@ const Item = sequelize.define<ItemInstance, ItemAttrs>('item', {
     url: DataTypes.STRING,
     score: DataTypes.INTEGER,
     title: DataTypes.STRING,
-    descendants: DataTypes.INTEGER,
-    collectionId: {
-        type: DataTypes.INTEGER,
-        allowNull: false
-    }
+    descendants: DataTypes.INTEGER
 }, {
     tableName: 'items'
 });

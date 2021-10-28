@@ -11,8 +11,8 @@ import { ItemHierarchy } from "../../models/ItemHierarchy";
 
 const HNAPI = 'https://hacker-news.firebaseio.com/v0';
 
-interface FetchedItem extends Omit<ItemAttrs, 'collectionId'> {
-    kids: number[];
+export interface FetchedItem extends Omit<ItemAttrs, 'collectionId'> {
+    kids?: number[];
 }
 
 const fetchAndProcessItem = async (itemId: number, collectionId: number, firstLevel: boolean = false) => {
@@ -27,7 +27,7 @@ const fetchAndProcessItem = async (itemId: number, collectionId: number, firstLe
     // Check the item type for 'story' (or 'comment')
     if (
         (firstLevel && fetchedItem.type !== ItemTypesEnum.story) ||
-        !Object.values(ItemTypesEnum).includes(fetchedItem.type)
+        !(fetchedItem.type in ItemTypesEnum)
     ) throw new UnprocessableEntityError();
 
     // Check for item existence in DB
@@ -35,23 +35,24 @@ const fetchAndProcessItem = async (itemId: number, collectionId: number, firstLe
     let item = await Item.findByPk(fetchedItem.id);
     if (!item) {
         item = await Item.create({
-            ...fetchedItem,
-            collectionId: collectionId
+            ...fetchedItem
         });
     }
 
-    // Create association
-    const collItemRecord = await CollItem.findOne({
-        where: {
-            collectionId: collectionId,
-            itemId: item.id
-        }
-    });
-    if (!collItemRecord) {
-        await CollItem.create({
-            collectionId: collectionId,
-            itemId: item.id
+    // Create association for only 'story'
+    if (firstLevel) {
+        const collItemRecord = await CollItem.findOne({
+            where: {
+                collectionId: collectionId,
+                itemId: item.id
+            }
         });
+        if (!collItemRecord) {
+            await CollItem.create({
+                collectionId: collectionId,
+                itemId: item.id
+            });
+        }
     }
 
     // Create hierarchy record

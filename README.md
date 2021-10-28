@@ -44,7 +44,7 @@ All the routes send *Content-Type: application/json* header. Potential error mes
         *Sends a collection and its contents*
         1. Sends:
             - 404 on non-existent collection
-            - 200 and ***????***
+            - 200 and collection object `{ name: string; stories: { ...storyprops; kids: { kid info with nested kids }[] }[] }`
     - **DELETE /coll/<collection_name>**  
         *Deletes a collection*
         1. Sends:
