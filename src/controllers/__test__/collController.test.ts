@@ -132,7 +132,60 @@ describe('POST /coll', () => {
 });
 
 
-describe('GET /coll/:collName', () => {});
+describe('GET /coll/:collName', () => {
+    it('sends 404 on non-existent collection', async () => {
+        const token = await getJwt();
+
+        await supertest(app)
+            .get(`/coll/abc`)
+            .send({ token })
+            .expect(404)
+    });
+    
+    it('sends 200 and collection', async () => {
+        const token = await getJwt();
+        const collName = await createCollection(token);
+
+        // @ts-ignore
+        fetch.mockImplementation(async (url: string) => {
+            let jsonFcn:
+                () => Promise<FetchedItem|null> = async () => null;
+            if (url.includes('123')) {
+                jsonFcn = async () => ({
+                    id: 123,
+                    type: 'story',
+                    time: 123456789,
+                    kids: [ 124 ]
+                });
+            } else if (url.includes('124')) {
+                jsonFcn = async () => ({
+                    id: 124,
+                    type: 'comment',
+                    time: 123456789,
+                    parent: 123
+                });
+            }
+            return {
+                ok: true,
+                json: jsonFcn
+            }
+        });
+
+        await supertest(app)
+            .post(`/coll/${collName}/123`)
+            .send({ token })
+            .expect(201)
+
+        const { body } = await supertest(app)
+            .get(`/coll/${collName}`)
+            .send({ token })
+            .expect(200)
+
+        expect(body.name).toEqual(collName);
+        expect(body.stories).toHaveLength(1);
+        expect(body.stories[0].kids).toHaveLength(1);
+    });
+});
 
 
 describe('DELETE /coll/:collName', () => {

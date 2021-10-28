@@ -9,13 +9,13 @@ import { CollItem } from "../../models/CollItem";
 import { asyncForEach } from "../../util/helpers";
 import { ItemHierarchy } from "../../models/ItemHierarchy";
 
-const HNAPI = 'https://hacker-news.firebaseio.com/v0';
+export const HNAPI = 'https://hacker-news.firebaseio.com/v0';
 
 export interface FetchedItem extends Omit<ItemAttrs, 'collectionId'> {
     kids?: number[];
 }
 
-const fetchAndProcessItem = async (itemId: number, collectionId: number, firstLevel: boolean = false) => {
+const fetchAndProcessItem = async (itemId: number, collectionId?: number, firstLevel: boolean = false) => {
     // Fetch the item
     const itemData = await fetch(`${HNAPI}/item/${itemId}.json`);
     if (!itemData || !itemData.ok) throw new NotFoundError();
@@ -37,10 +37,14 @@ const fetchAndProcessItem = async (itemId: number, collectionId: number, firstLe
         item = await Item.create({
             ...fetchedItem
         });
+    } else {
+        await item.update({
+            ...fetchedItem
+        });
     }
 
     // Create association for only 'story'
-    if (firstLevel) {
+    if (firstLevel && collectionId) {
         const collItemRecord = await CollItem.findOne({
             where: {
                 collectionId: collectionId,
