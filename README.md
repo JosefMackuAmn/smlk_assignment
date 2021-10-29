@@ -12,6 +12,8 @@ API exposes port **8080**.
 
 Needed changes if this should be a production project are listed in file **inproduction.txt**.
 
+*Little note*: For testing purposes, I liked to use these stories: 123 & 28975856. Just so you don't have to look other ids up :)
+
 # Routes documentation
 
 All the routes send *Content-Type: application/json* header. Potential error messages are sent in the following format:  
