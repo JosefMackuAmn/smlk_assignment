@@ -71,7 +71,7 @@ All the routes send *Content-Type: application/json* header. Potential error mes
             - 404 on non-existent collection
             - 404 on non-existent story
             - 200 on successful deletion
-- **/search**
+- **/search**  
     *Sends search results*
     1. Expects:
         - q as query parameter: string
