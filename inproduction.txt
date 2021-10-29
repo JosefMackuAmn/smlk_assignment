@@ -33,3 +33,5 @@ Lepší architektura kódu interagujícího s elasticsearch (neznám best practi
 Lepší handlování selhání interakcí s databází/elasticsearch
 
 Testovat interakci s elasticsearchem
+
+Nevkládat citlivá data přímo do docker-compose.yml
