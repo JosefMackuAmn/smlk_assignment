@@ -6,9 +6,9 @@ if (process.env.NODE_ENV === 'test') {
 }
 
 const sequelize = new Sequelize(
-    dbName, 'root', 'secret123', {
+    dbName, 'root', '123456', {
         dialect: 'mysql',
-        host: 'localhost',
+        host: 'mysqldb',
         logging: false
     }
 )
