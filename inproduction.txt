@@ -35,3 +35,5 @@ Lepší handlování selhání interakcí s databází/elasticsearch
 Testovat interakci s elasticsearchem
 
 Nevkládat citlivá data přímo do docker-compose.yml
+
+Počkat na úplné nastartování MySQL databáze, aby nespadl server

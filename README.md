@@ -6,6 +6,8 @@ Install docker and docker-compose.
 
 The API can be run in development mode by executing *docker-compose build* and *docker-compose up*, tests can be run by executing *npm test* in a running container (note that this will interrupt database connection of main process).
 
+**After running *docker-compose up*** MySQL may not be ready for a connection and therefore you will need to restart the process in *app* container. Simply saving a file in *src* directory should work, otherwise run *docker-compose restart app*.
+
 API exposes port **8080**.
 
 Needed changes if this should be a production project are listed in file **inproduction.txt**.
