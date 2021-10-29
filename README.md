@@ -71,10 +71,8 @@ All the routes send *Content-Type: application/json* header. Potential error mes
             - 404 on non-existent collection
             - 404 on non-existent story
             - 200 on successful deletion
-- **/search**  
+- **/search?q=<your_query>**  
     *Sends search results*
-    1. Expects:
-        - q as query parameter: string
-    2. Sends:
+    1. Sends:
         - 400 on invalid data
         - 200 and array of elasticsearch records on successful search
