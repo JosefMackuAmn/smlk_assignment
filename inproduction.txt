@@ -1,0 +1,35 @@
+Mazat itemy, které se už nikde nepoužívají
+
+Možná lepší handlování mazání databáze v beforeEach
+
+Použití transakcí
+
+Nějak optimalizovat performance
+
+Rozdělit testy po routech, aby nebyl tak velký file
+
+Líp handlovat jiný typ itemu než vyhozením erroru (asi odignorováním), takhle se přeruší všechno fetchování
+
+Upravit test POST /coll/:collName/:storyId -> sends 200 ... aby checkoval i databázi a uložení i kid itemů
+
+Odesílat i přijímat property token (teď se odesílá jwt a přijímá token)
+
+Nepoužívat @ts-ignore v testech, jenže jest je nejspíš rozbitej
+
+Testovat zničení asociací v DELETE /coll/:collName
+
+Nechtít posílat token na body v GET requestu, ale třeba jako header
+
+Využití joinů v getCollection
+
+DRY v testech
+
+Využít cursor při pravidelném updatování itemů
+
+Moje API předpokládá spolehlivost HN API, chyba
+
+Lepší architektura kódu interagujícího s elasticsearch (neznám best practises)
+
+Lepší handlování selhání interakcí s databází/elasticsearch
+
+Testovat interakci s elasticsearchem

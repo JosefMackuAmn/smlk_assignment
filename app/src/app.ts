@@ -2,6 +2,7 @@ import express, { NextFunction, Request, Response } from 'express';
 
 import { authRouter } from './routes/auth';
 import { collRouter } from './routes/coll';
+import { searchRouter } from './routes/search';
 
 import { isAuth } from './middleware/isAuth';
 import { CustomError } from './errors/CustomError';
@@ -21,6 +22,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use('/auth', authRouter);
+app.use('/search', searchRouter);
 app.use('/coll', isAuth, collRouter);
 
 app.use((req: Request, res: Response) => {

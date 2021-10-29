@@ -10,15 +10,14 @@ export const checkConnection = () => {
     
         while (!connected) {
             try {
-                await esclient.cluster.health({})
+                await esclient.cluster.health({});
                 connected = true;
-            } catch (err) {
-                console.log(err)
-            }
+            } catch (err) {}
         }
 
         resolve(true);
     });
 }
 
+export * from './util/eshelpers';
 export { esclient };

@@ -1,10 +1,14 @@
 # Prerequisites
 
-Install and run local MySQL server and create a database named 'smlk' and 'smlk_test'.
+Install docker and docker-compose.
 
-# Running the API
+# Running the API & info
 
-The API can be run in development mode by executing *npm start*, tests can be run by executing *npm test*.
+The API can be run in development mode by executing *docker-compose build* and *docker-compose up*, tests can be run by executing *npm test* in a running container (note that this will interrupt database connection of main process).
+
+API exposes port **8080**.
+
+Needed changes if this should be a production project are listed in file **inproduction.txt**.
 
 # Routes documentation
 
@@ -65,3 +69,10 @@ All the routes send *Content-Type: application/json* header. Potential error mes
             - 404 on non-existent collection
             - 404 on non-existent story
             - 200 on successful deletion
+- **/search**
+    *Sends search results*
+    1. Expects:
+        - q as query parameter: string
+    2. Sends:
+        - 400 on invalid data
+        - 200 and array of elasticsearch records on successful search

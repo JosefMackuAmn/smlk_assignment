@@ -1,5 +1,7 @@
 import fetch from 'node-fetch';
 
+import * as elastic from '../../elastic';
+
 import { UnprocessableEntityError } from '../../errors/UnprocessableEntityError';
 import { NotFoundError } from '../../errors/NotFoundError';
 
@@ -72,6 +74,18 @@ const fetchAndProcessItem = async (itemId: number, collectionId?: number, firstL
             itemId: item.id,
             parentId: parentId
         });
+    }
+
+    // Try to save the item into the es
+    try {
+        await elastic.addItem({
+            type: item.type,
+            text: item.text || '',
+            author: item.by || '',
+            title: item.title || ''
+        });
+    } catch (err) {
+        console.log(`Couldn't save item ${item.id} into elasticsearch`);
     }
 
     // Recursively fetch and process kid items

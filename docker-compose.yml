@@ -11,7 +11,7 @@ services:
     ports:
       - 3307:3306
     volumes:
-      - ./testing-db.sql:/docker-entrypoint-initdb.d/testing-db.sql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
   app:
     depends_on:
       - mysqldb
