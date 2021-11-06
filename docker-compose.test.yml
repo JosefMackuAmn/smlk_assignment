@@ -8,8 +8,6 @@ services:
       - MYSQL_DATABASE=smlk
     networks:
       - esnet
-    ports:
-      - 3307:3307
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
   app:
@@ -18,20 +16,20 @@ services:
       - elasticsearch
     build: ./app
     restart: unless-stopped
-    command: npm start
+    command: npm test
     volumes:
       - ./app:/usr/src/app
       - /usr/src/app/node_modules
     ports:
-      - 8080:8080
+      - 8081:8081
     links:
       - mysqldb
       - elasticsearch
     networks:
       - esnet
     environment:
-      - NODE_ENV=prod
-      - PORT=8080
+      - NODE_ENV=test
+      - PORT=8081
       - DB_NAME=smlk
       - DB_HOST=mysqldb
       - DB_USER=root
@@ -50,8 +48,6 @@ services:
       - discovery.type=single-node
     logging:
       driver: none
-    ports:
-      - 9200:9200
     networks: 
       - esnet
 volumes:

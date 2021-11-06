@@ -3,7 +3,8 @@ import jwt from 'jsonwebtoken';
 
 import { app } from '../../app';
 import { User } from '../../models/User';
-import { DecodedJwt } from '../../middleware/isAuth';
+
+import { DecodedJwt } from '../../types/misc';
 
 describe('POST /auth', () => {
     it('sends 400 on invalid data', async () => {
@@ -117,7 +118,7 @@ describe('POST /auth/login', () => {
             })
             .expect(200)
 
-        const decoded = jwt.verify(body.jwt, process.env.TOKEN_KEY) as DecodedJwt;
+        const decoded = jwt.verify(body.jwt, process.env.TOKEN_KEY!) as DecodedJwt;
         expect(decoded.nick).toEqual('MyCoolNick');
     });
 });

@@ -1,15 +1,16 @@
 declare global {
     namespace NodeJS {
         interface ProcessEnv {
-            TOKEN_KEY: string;
-            MYSQLDB_USER: string;
-            MYSQLDB_ROOT_PASSWORD: string;
-            MYSQLDB_DATABASE: string;
-            MYSQLDB_LOCAL_PORT: string;
-            MYSQLDB_DOCKER_PORT: string;
-            PORT: string;
-            ELASTIC_HOST: string;
-            ELASTIC_URL: string;
+            NODE_ENV?: string;
+            TOKEN_KEY?: string;
+            PORT?: string;
+            DB_NAME?: string;
+            DB_TEST_NAME?: string;
+            DB_HOST?: string;
+            DB_USER?: string;
+            DB_PASSWORD?: string;
+            ELASTIC_HOST?: string;
+            ELASTIC_URL?: string;
         }
     }
 }

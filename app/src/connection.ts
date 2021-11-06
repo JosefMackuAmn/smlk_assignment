@@ -1,16 +1,18 @@
 import { Sequelize } from 'sequelize';
 
-let dbName = 'smlk';
-if (process.env.NODE_ENV === 'test') {
-    dbName += '_test';
-}
+const {
+    DB_NAME,
+    DB_HOST,
+    DB_USER,
+    DB_PASSWORD
+} = process.env;
 
 const sequelize = new Sequelize(
-    dbName, 'root', '123456', {
+    DB_NAME!, DB_USER!, DB_PASSWORD!, {
         dialect: 'mysql',
-        host: 'mysqldb',
+        host: DB_HOST!,
         logging: false
     }
-)
+);
 
 export { sequelize };

@@ -1,25 +1,23 @@
 import fetch from 'node-fetch';
 
-import * as elastic from '../../elastic';
+import { elastic } from '../../elastic';
 
 import { UnprocessableEntityError } from '../../errors/UnprocessableEntityError';
 import { NotFoundError } from '../../errors/NotFoundError';
 
-import { Item, ItemAttrs, ItemTypesEnum } from "../../models/Item";
-import { CollItem } from "../../models/CollItem";
+import { Item } from "../../models/Item";
+import { CollectionItem } from "../../models/CollectionItem";
 
-import { asyncForEach } from "../../util/helpers";
+import { asyncMap } from "../../util/asyncMap";
 import { ItemHierarchy } from "../../models/ItemHierarchy";
 
-export const HNAPI = 'https://hacker-news.firebaseio.com/v0';
+import { FetchedItem, ItemTypesEnum } from '../../types/models/item';
 
-export interface FetchedItem extends Omit<ItemAttrs, 'collectionId'> {
-    kids?: number[];
-}
+export const HACKER_NEWS_API = 'https://hacker-news.firebaseio.com/v0';
 
 const fetchAndProcessItem = async (itemId: number, collectionId?: number, firstLevel: boolean = false) => {
     // Fetch the item
-    const itemData = await fetch(`${HNAPI}/item/${itemId}.json`);
+    const itemData = await fetch(`${HACKER_NEWS_API}/item/${itemId}.json`);
     if (!itemData || !itemData.ok) throw new NotFoundError();
     
     // Get the item object
@@ -37,6 +35,7 @@ const fetchAndProcessItem = async (itemId: number, collectionId?: number, firstL
     let item = await Item.findByPk(fetchedItem.id);
     if (!item) {
         item = await Item.create({
+            itemId: fetchedItem.id,
             ...fetchedItem
         });
     } else {
@@ -47,31 +46,31 @@ const fetchAndProcessItem = async (itemId: number, collectionId?: number, firstL
 
     // Create association for only 'story'
     if (firstLevel && collectionId) {
-        const collItemRecord = await CollItem.findOne({
+        const collectionItemRecord = await CollectionItem.findOne({
             where: {
                 collectionId: collectionId,
-                itemId: item.id
+                itemId: item.itemId
             }
         });
-        if (!collItemRecord) {
-            await CollItem.create({
+        if (!collectionItemRecord) {
+            await CollectionItem.create({
                 collectionId: collectionId,
-                itemId: item.id
+                itemId: item.itemId
             });
         }
     }
 
     // Create hierarchy record
-    const parentId = item.parent || null;
+    const parentId = fetchedItem.parent || null;
     const itemHierarchyRecord = await ItemHierarchy.findOne({
         where: {
-            itemId: item.id,
+            itemId: item.itemId,
             parentId: parentId
         }
     });
     if (!itemHierarchyRecord) {
         await ItemHierarchy.create({
-            itemId: item.id,
+            itemId: item.itemId,
             parentId: parentId
         });
     }
@@ -85,12 +84,12 @@ const fetchAndProcessItem = async (itemId: number, collectionId?: number, firstL
             title: item.title || ''
         });
     } catch (err) {
-        console.log(`Couldn't save item ${item.id} into elasticsearch`);
+        console.log(`Couldn't save item ${item.itemId} into elasticsearch`);
     }
 
     // Recursively fetch and process kid items
     if (fetchedItem.kids) {
-        await asyncForEach(fetchedItem.kids, async (kid) => {
+        await asyncMap(fetchedItem.kids, async (kid) => {
             await fetchAndProcessItem(kid, collectionId);
         });
     }

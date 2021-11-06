@@ -1,30 +1,17 @@
-import { DataTypes, HasManyCreateAssociationMixin, Model } from "sequelize";
+import { DataTypes } from "sequelize";
 
 import { sequelize } from '../connection';
-import { Collection } from "./Collection";
 
-interface UserAttrs {
-    nick: string;
-    password: string;
-}
-
-interface UserCreationAttrs extends UserAttrs {};
-
-interface UserInstance extends Model<UserAttrs, UserCreationAttrs>, UserAttrs {
-    createdAt: Date;
-    updatedAt: Date;
-
-    createCollection: HasManyCreateAssociationMixin<typeof Collection>;
-};
+import { UserAttrs, UserInstance } from "../types/models/user";
 
 const User = sequelize.define<UserInstance, UserAttrs>('user', {
-    nick: {
-        type: DataTypes.STRING,
+    userNick: {
+        type: DataTypes.STRING(20),
         primaryKey: true,
         allowNull: false
     },
     password: {
-        type: DataTypes.STRING,
+        type: DataTypes.CHAR(60),
         allowNull: false
     }
 }, {

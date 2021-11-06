@@ -1,38 +1,12 @@
-import { DataTypes, Model } from "sequelize";
+import { DataTypes } from "sequelize";
 
 import { sequelize } from '../connection';
 
-export enum ItemTypesEnum {
-    story = 'story',
-    comment = 'comment'
-}
-
-export interface ItemAttrs {
-    id: number;
-    deleted?: boolean;
-    type: string;
-    by?: string;
-    time: number;
-    text?: string;
-    dead?: boolean;
-    parent?: number;
-    url?: string;
-    score?: number;
-    title?: string;
-    descendants?: number;
-}
-
-interface ItemCreationAttrs extends ItemAttrs {};
-
-export interface ItemInstance extends Model<ItemAttrs, ItemCreationAttrs>, ItemAttrs {
-    createdAt: Date;
-    updatedAt: Date;
-};
+import { ItemAttrs, ItemInstance, ItemTypesEnum } from "../types/models/item";
 
 const Item = sequelize.define<ItemInstance, ItemAttrs>('item', {
-    id: {
+    itemId: {
         type: DataTypes.INTEGER,
-        autoIncrement: true,
         allowNull: false,
         primaryKey: true
     },
@@ -42,7 +16,7 @@ const Item = sequelize.define<ItemInstance, ItemAttrs>('item', {
         defaultValue: false
     },
     type: {
-        type: DataTypes.STRING,
+        type: DataTypes.ENUM(...Object.keys(ItemTypesEnum)),
         allowNull: false
     },
     by: {
@@ -50,7 +24,7 @@ const Item = sequelize.define<ItemInstance, ItemAttrs>('item', {
         defaultValue: null
     },
     time: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.DATE,
         allowNull: false
     },
     text: DataTypes.TEXT,
@@ -59,11 +33,10 @@ const Item = sequelize.define<ItemInstance, ItemAttrs>('item', {
         allowNull: false,
         defaultValue: false
     },
-    parent: DataTypes.INTEGER,
     url: DataTypes.STRING,
-    score: DataTypes.INTEGER,
+    score: DataTypes.MEDIUMINT.UNSIGNED,
     title: DataTypes.STRING,
-    descendants: DataTypes.INTEGER
+    descendants: DataTypes.SMALLINT.UNSIGNED
 }, {
     tableName: 'items'
 });

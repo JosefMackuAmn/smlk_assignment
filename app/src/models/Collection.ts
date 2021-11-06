@@ -1,37 +1,33 @@
-import { DataTypes, Model, Optional } from "sequelize";
+import { DataTypes } from "sequelize";
 
 import { sequelize } from '../connection';
 
-interface CollectionAttrs {
-    id: number;
-    name: string;
-    userNick: string;
-}
-
-interface CollectionCreationAttrs extends Optional<CollectionAttrs, 'id'> {};
-
-interface CollectionInstance extends Model<CollectionAttrs, CollectionCreationAttrs>, CollectionAttrs {
-    createdAt: Date;
-    updatedAt: Date;
-};
+import { CollectionAttrs, CollectionInstance } from "../types/models/collection";
 
 const Collection = sequelize.define<CollectionInstance, CollectionAttrs>('collection', {
-    id: {
+    collectionId: {
         type: DataTypes.INTEGER,
         autoIncrement: true,
         allowNull: false,
         primaryKey: true
     },
     name: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(20),
         allowNull: false
     },
     userNick: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(20),
         allowNull: false
     }
 }, {
-    tableName: 'collections'
+    tableName: 'collections',
+    indexes: [
+        {
+            name: 'nameByUserNick',
+            unique: true,
+            fields: ['userNick', 'name']
+        }
+    ]
 });
 
 export { Collection };

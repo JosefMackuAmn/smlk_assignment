@@ -1,12 +1,8 @@
 Mazat itemy, které se už nikde nepoužívají
 
-Možná lepší handlování mazání databáze v beforeEach
-
 Použití transakcí
 
 Nějak optimalizovat performance
-
-Rozdělit testy po routech, aby nebyl tak velký file
 
 Líp handlovat jiný typ itemu než vyhozením erroru (asi odignorováním), takhle se přeruší všechno fetchování
 
@@ -28,8 +24,6 @@ Využít cursor při pravidelném updatování itemů
 
 Moje API předpokládá spolehlivost HN API, chyba
 
-Lepší architektura kódu interagujícího s elasticsearch (neznám best practises)
-
 Lepší handlování selhání interakcí s databází/elasticsearch
 
 Testovat interakci s elasticsearchem
@@ -37,5 +31,3 @@ Testovat interakci s elasticsearchem
 Nevkládat citlivá data přímo do docker-compose.yml
 
 Počkat na úplné nastartování MySQL databáze, aby nespadl server
-
-Využívat env proměnné pro připojení k databázi

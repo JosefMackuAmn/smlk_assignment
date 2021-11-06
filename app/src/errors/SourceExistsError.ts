@@ -5,8 +5,6 @@ class SourceExistsError extends CustomError {
 
     constructor() {
         super('Source exists');
-
-        Object.setPrototypeOf(this, SourceExistsError.prototype);
     }
 
     serializeErrors() {

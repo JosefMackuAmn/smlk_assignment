@@ -5,8 +5,6 @@ class InvalidCredentialsError extends CustomError {
 
     constructor() {
         super('Invalid credentials');
-
-        Object.setPrototypeOf(this, InvalidCredentialsError.prototype);
     }
 
     serializeErrors() {

@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 
-import * as elastic from '../elastic';
+import { elastic } from '../elastic';
 
 export const getSearch = async (req: Request, res: Response, next: NextFunction) => {
     const { q } = req.query as { q: string };

@@ -5,8 +5,6 @@ class UnprocessableEntityError extends CustomError {
 
     constructor() {
         super('Unprocessable Entity');
-
-        Object.setPrototypeOf(this, UnprocessableEntityError.prototype);
     }
 
     serializeErrors() {

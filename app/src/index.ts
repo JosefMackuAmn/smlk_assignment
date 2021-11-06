@@ -2,15 +2,20 @@ import cron from 'node-cron';
 
 import { app } from './app';
 import { sequelize } from './connection';
-import * as elastic from './elastic';
+import { elastic } from './elastic';
 
 import { fetchAndProcessItem } from './controllers/fcns/fetchAndProcessItem';
-import { Item, ItemTypesEnum } from './models/Item';
-import { ES_INDEX } from './util/eshelpers';
+import { Item } from './models/Item';
+
+import { ItemTypesEnum } from './types/models/item';
+
+import { checkEnvironment } from './util/checkEnvironment';
+
+checkEnvironment();
 
 const PORT = process.env.PORT || 8080;
 console.log('Connecting to database...');
-sequelize.sync(/* { force: true } */).then(() => {
+sequelize.sync({ force: true }).then(() => {
     console.log('Connected to database!');
 
     console.log('Connecting to elasticsearch...');
@@ -26,7 +31,7 @@ sequelize.sync(/* { force: true } */).then(() => {
             });
     
             for (const story of allStories) {
-                await fetchAndProcessItem(story.id);
+                await fetchAndProcessItem(story.itemId);
             }
     
             console.log('Items synchornized!');
@@ -35,7 +40,7 @@ sequelize.sync(/* { force: true } */).then(() => {
         // Init elasticsearch
         // elastic.esclient.indices.delete({ index: ES_INDEX });
         const elasticIndex = await elastic.esclient.indices.exists({
-            index: ES_INDEX
+            index: elastic.ES_INDEX
         });
         if (!elasticIndex) {
             await elastic.createIndex();

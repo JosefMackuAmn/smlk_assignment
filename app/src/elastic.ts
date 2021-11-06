@@ -1,23 +1,115 @@
 import { Client } from "@elastic/elasticsearch";
+import { SearchResponse } from "@elastic/elasticsearch/api/types";
 
-const url = process.env.ELASTIC_URL;
+import { ESItem } from "./types/elasticsearch";
 
-const esclient = new Client({ node: url });
+class Elastic {
+    public readonly ES_INDEX = 'items';
+    public readonly ES_TYPE = 'item';
 
-export const checkConnection = () => {
-    return new Promise(async (resolve) => {
+    private _esclient;
+
+    constructor(url: string) {
+        this._esclient = new Client({ node: url });
+    }
+
+    get esclient() {
+        return this._esclient;
+    }
+
+    async checkConnection() {
         let connected = false;
     
         while (!connected) {
             try {
-                await esclient.cluster.health({});
+                await this._esclient.cluster.health({});
                 connected = true;
             } catch (err) {}
         }
 
-        resolve(true);
-    });
+        return true;
+    }
+
+    async createIndex() {
+        try {
+          await this._esclient.indices.create({ index: this.ES_INDEX });
+          console.log(`Created index ${this.ES_INDEX}`);
+        } catch (err) {
+          console.error(`An error occurred while creating the index ${this.ES_INDEX}`);
+          console.error(err);
+        }
+    }
+
+    async setItemMapping() {
+        try {
+            // Define mapping
+            const schema = {
+              title: { type: "text" },
+              text: { type: "text" },
+              author: { type: "text" },
+              type: { type: "text" }
+            };
+        
+            // Apply mapping
+            await this._esclient.indices.putMapping({
+              index: this.ES_INDEX,
+              type: this.ES_TYPE,
+              include_type_name: true,
+              body: { 
+                properties: schema
+              } 
+            })
+        
+            console.log(`${this.ES_TYPE} mapping created successfully`);
+        
+          } catch (err) {
+            console.error("An error occurred while setting the mapping");
+            console.error(err);
+          }
+    }
+
+    async getItem(q: string) {
+        // Search
+        const { body: { hits } } = await this._esclient.search<SearchResponse<ESItem>>({
+            index: this.ES_INDEX, 
+            type: this.ES_TYPE,
+            body: {
+                query: {
+                    multi_match: {
+                        query: q,
+                        fields: [
+                            "title", "text", "author", "type"
+                        ]
+                    }
+                }
+            }
+        });
+        
+        // Get important data
+        const values = hits.hits.map((hit) => {
+            return {
+                id: hit._id,
+                score: hit._score,
+                title: hit._source?.title,
+                by: hit._source?.author,
+                text: hit._source?.text,
+                type: hit._source?.type,
+            }
+        });
+        
+        return values;    
+    }
+
+    async addItem(item: ESItem) {
+        // Insert new item
+        return this._esclient.index({
+            index: this.ES_INDEX,
+            type: this.ES_TYPE,
+            body: { ...item }
+        });
+    }
 }
 
-export * from './util/eshelpers';
-export { esclient };
+const elastic = new Elastic(process.env.ELASTIC_URL!);
+
+export { elastic };

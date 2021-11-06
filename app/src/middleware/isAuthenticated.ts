@@ -2,14 +2,9 @@ import { NextFunction, Request, Response } from "express";
 import jwt from 'jsonwebtoken';
 
 import { InvalidCredentialsError } from "../errors/InvalidCredentialsError";
+import { DecodedJwt } from "../types/misc";
 
-export interface DecodedJwt {
-    nick: string;
-    iat: number;
-    exp: number;
- }
-
-const isAuth = (req: Request, res: Response, next: NextFunction) => {
+const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
     const { token }: { token: string } = req.body;
 
     if (!token) {
@@ -27,4 +22,4 @@ const isAuth = (req: Request, res: Response, next: NextFunction) => {
     next();
 }
 
-export { isAuth };
+export { isAuthenticated };

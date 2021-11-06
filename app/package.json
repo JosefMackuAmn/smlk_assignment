@@ -7,7 +7,7 @@
     "start:build": "tsc -w",
     "start:run": "nodemon -L build/index.js",
     "start": "concurrently npm:start:*",
-    "test": "set NODE_ENV=test&& jest -i --watchAll --no-cache"
+    "test": "nodemon -L --exec \"jest -i --watchAll --no-cache\""
   },
   "jest": {
     "preset": "ts-jest",

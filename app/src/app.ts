@@ -1,59 +1,35 @@
 import express, { NextFunction, Request, Response } from 'express';
 
-import { authRouter } from './routes/auth';
-import { collRouter } from './routes/coll';
-import { searchRouter } from './routes/search';
+import { authenticationRouter } from './routers/authenticationRouter';
+import { collectionRouter } from './routers/collectionRouter';
+import { searchRouter } from './routers/searchRouter';
+import { storyRouter } from './routers/storyRouter';
+import * as errorController from './controllers/errorController';
 
-import { isAuth } from './middleware/isAuth';
-import { CustomError } from './errors/CustomError';
+import { isAuthenticated } from './middleware/isAuthenticated';
 
-import { Collection } from './models/Collection';
-import { User } from './models/User';
-import { Item } from './models/Item';
-import { CollItem } from './models/CollItem';
+import { associations } from './models/associations';
 
 const app = express();
 
+// Configuration
 app.use(express.json());
-
 app.use((req: Request, res: Response, next: NextFunction) => {
     res.set('Content-Type', 'application/json');
     next();
 });
 
-app.use('/auth', authRouter);
+// Register routes
+app.use('/auth', authenticationRouter);
 app.use('/search', searchRouter);
-app.use('/coll', isAuth, collRouter);
+app.use('/collection', isAuthenticated, collectionRouter);
+app.use('/collection', isAuthenticated, storyRouter);
 
-app.use((req: Request, res: Response) => {
-    res.sendStatus(404);
-});
+// Error handling
+app.use(errorController.notFoundHandler);
+app.use(errorController.errorHandler);
 
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-    if (err instanceof CustomError) {
-        return res.status(err.statusCode).send({
-            errors: err.serializeErrors()
-        });
-    }
-    
-    console.log("---------------------------------------");
-    console.log(new Date().toString());
-    console.log(`${req.method}: ${req.originalUrl}`)
-    console.log("Express error handler:");
-    console.log(err);
-    console.log("---------------------------------------");
-    res.status(500).send({
-        errors: [{ message: "Unexpected error" }],
-    });
-});
-
-Collection.belongsTo(User, {
-    constraints: false,
-    onDelete: 'CASCADE'
-});
-User.hasMany(Collection);
-
-Item.belongsToMany(Collection, { through: CollItem });
-Collection.belongsToMany(Item, { through: CollItem });
+// Create associations
+associations();
 
 export { app };
