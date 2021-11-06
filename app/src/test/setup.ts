@@ -19,17 +19,6 @@ beforeAll(async () => {
     checkEnvironment();
 });
 
-beforeEach(async () => {
-    await ItemHierarchy.drop();
-    await CollectionItem.drop();
-    await Item.drop();
-    await Collection.drop();
-    await User.drop();
-    await sequelize.sync({ force: true });
-
-    jest.clearAllMocks();
-});
-
 afterAll(async () => {
     await sequelize.close();
 });

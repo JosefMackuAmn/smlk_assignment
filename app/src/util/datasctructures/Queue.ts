@@ -5,7 +5,7 @@ class QueueNode<T> {
     ) {}
 }
 
-export class Queue<T> {
+class Queue<T> {
     public head: QueueNode<T>|null = null;
     public tail: QueueNode<T>|null = null;
     public length = 0;
@@ -16,10 +16,10 @@ export class Queue<T> {
         if (this.head) {
             this.head.next = newNode;
         } else {
-            this.head = newNode;
             this.tail = newNode;
         }
 
+        this.head = newNode;
         this.length++;
     }
 
@@ -40,3 +40,5 @@ export class Queue<T> {
         return currentTail.value;
     }
 }
+
+export { Queue };
