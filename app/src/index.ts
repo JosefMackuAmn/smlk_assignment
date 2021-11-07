@@ -15,7 +15,7 @@ checkEnvironment();
 
 const PORT = process.env.PORT || 8080;
 console.log('Connecting to database...');
-sequelize.sync({ force: true }).then(() => {
+sequelize.sync(/* { force: true } */).then(() => {
     console.log('Connected to database!');
 
     console.log('Connecting to elasticsearch...');

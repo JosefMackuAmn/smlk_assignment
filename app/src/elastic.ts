@@ -17,6 +17,7 @@ class Elastic {
         return this._esclient;
     }
 
+    // Resolves on establishing connection to elasticsearch
     async checkConnection() {
         let connected = false;
     
@@ -30,6 +31,7 @@ class Elastic {
         return true;
     }
 
+    // Creates index
     async createIndex() {
         try {
           await this._esclient.indices.create({ index: this.ES_INDEX });
@@ -40,10 +42,11 @@ class Elastic {
         }
     }
 
+    // Sets item mapping
     async setItemMapping() {
         try {
             // Define mapping
-            const schema = {
+            const itemSchema = {
               title: { type: "text" },
               text: { type: "text" },
               author: { type: "text" },
@@ -56,7 +59,7 @@ class Elastic {
               type: this.ES_TYPE,
               include_type_name: true,
               body: { 
-                properties: schema
+                properties: itemSchema
               } 
             })
         
@@ -68,6 +71,7 @@ class Elastic {
           }
     }
 
+    // Searches and returns items matching a query
     async getItem(q: string) {
         // Search
         const { body: { hits } } = await this._esclient.search<SearchResponse<ESItem>>({
@@ -100,6 +104,7 @@ class Elastic {
         return values;    
     }
 
+    // Saves new item into elasticsearch
     async addItem(item: ESItem) {
         // Insert new item
         return this._esclient.index({

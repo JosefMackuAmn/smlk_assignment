@@ -32,17 +32,6 @@ export interface FetchedItem extends Omit<ItemAttrs, 'itemId'> {
     parent?: number;
 }
 
-export interface SentItem extends Omit<FetchedItem, 'kids'|'parent'|'id'> {
-    itemId: number;
+export interface SentItem extends ItemAttrs {
     kids: (SentItem|null)[];
-}
-
-export interface SentCollection {
-    name: string;
-    stories: (SentItem|null)[]
-}
-
-export interface WithItemId {
-    'itemId': number;
-    [key: string]: any;
 }

@@ -29,7 +29,7 @@ app.use('/collection', isAuthenticated, storyRouter);
 app.use(errorController.notFoundHandler);
 app.use(errorController.errorHandler);
 
-// Create associations
+// Create DB tables associations
 associations();
 
 export { app };

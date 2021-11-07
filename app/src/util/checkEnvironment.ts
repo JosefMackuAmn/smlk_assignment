@@ -1,5 +1,5 @@
 import { CustomErrorMessage } from "../types/errors";
-import { NodeEnvsEnum } from "../types/environment";
+import { NodeEnvsEnum } from "../types/misc";
 
 export const checkEnvironment = () => {
     const errors: CustomErrorMessage[] = [];

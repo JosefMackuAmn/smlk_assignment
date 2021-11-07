@@ -1,12 +1,6 @@
 process.env.TOKEN_KEY = 'test';
 
 import { sequelize } from '../connection';
-import { Collection } from '../models/Collection';
-import { CollectionItem } from '../models/CollectionItem';
-import { Item } from '../models/Item';
-import { ItemHierarchy } from '../models/ItemHierarchy';
-import { User } from '../models/User';
-
 import { checkEnvironment } from '../util/checkEnvironment';
 
 jest.setTimeout(25000);

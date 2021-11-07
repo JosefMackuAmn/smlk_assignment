@@ -9,7 +9,8 @@ import { Item } from "../models/Item";
 import { asyncMap } from "../util/asyncMap";
 import { ItemHierarchy } from "../models/ItemHierarchy";
 
-import { SentCollection, WithItemId } from "../types/models/item";
+import { SentItem } from "../types/models/item";
+import { SentCollection } from "../types/models/collection";
 
 export const postCollection = async (req: Request, res: Response) => {
     const { name }: { name: string } = req.body;
@@ -61,7 +62,7 @@ export const getCollection = async (req: Request, res: Response) => {
     });
     data.stories = stories.map(story => {
         if (!story) return null;
-        return {
+        const item: SentItem = {
             itemId: story.itemId,
             deleted: story.deleted,
             type: story.type,
@@ -75,10 +76,11 @@ export const getCollection = async (req: Request, res: Response) => {
             descendants: story.descendants,
             kids: []
         }
+        return item;
     })
 
     // Populate kids
-    const populateKids = async (item: WithItemId|null) => {
+    const populateKids = async (item: SentItem|null) => {
         if (!item) return;
 
         // Get kid ids
@@ -88,7 +90,25 @@ export const getCollection = async (req: Request, res: Response) => {
 
         // Get kid instances
         const kids = await asyncMap(kidIds, async (kid) => {
-            return await Item.findByPk(kid.itemId);
+            const kidItem = await Item.findByPk(kid.itemId);
+            if (!kidItem) return null;
+
+            const kidItemToSend: SentItem = {
+                itemId: kidItem.itemId,
+                deleted: kidItem.deleted,
+                type: kidItem.type,
+                by: kidItem.by,
+                time: kidItem.time,
+                text: kidItem.text,
+                dead: kidItem.dead,
+                url: kidItem.url,
+                score: kidItem.score,
+                title: kidItem.title,
+                descendants: kidItem.descendants,
+                kids: []
+            }
+
+            return kidItemToSend;
         });
 
         // Recursively populate nested kids

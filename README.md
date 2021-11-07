@@ -66,6 +66,7 @@ All the routes send *Content-Type: application/json* header. Potential error mes
             - 404 on non-existent story
             - 422 on unprocessable item type
             - 201 on successful addition
+            - *Non-existent and/or unprocessable kid items are ignored*
     - **DELETE /collection/<collection_name>/<story_id: number>**  
         *Removes a story from collection*
         1. Sends:

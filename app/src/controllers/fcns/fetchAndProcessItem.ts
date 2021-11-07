@@ -12,8 +12,7 @@ import { asyncMap } from "../../util/asyncMap";
 import { ItemHierarchy } from "../../models/ItemHierarchy";
 
 import { FetchedItem, ItemTypesEnum } from '../../types/models/item';
-
-export const HACKER_NEWS_API = 'https://hacker-news.firebaseio.com/v0';
+import { HACKER_NEWS_API } from '../../constants';
 
 const fetchAndProcessItem = async (itemId: number, collectionId?: number, firstLevel: boolean = false) => {
     // Fetch the item

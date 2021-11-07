@@ -5,7 +5,7 @@ import { InvalidCredentialsError } from "../errors/InvalidCredentialsError";
 import { DecodedJwt } from "../types/misc";
 
 const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
-    const { token }: { token: string } = req.body;
+    const token = req.body.token as string|undefined;
 
     if (!token) {
         throw new InvalidCredentialsError();

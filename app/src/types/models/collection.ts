@@ -1,5 +1,7 @@
 import { Model, Optional } from "sequelize/types";
 
+import { SentItem } from "./item";
+
 export interface CollectionAttrs {
     collectionId: number;
     name: string;
@@ -12,3 +14,8 @@ export interface CollectionInstance extends Model<CollectionAttrs, CollectionCre
     createdAt: Date;
     updatedAt: Date;
 };
+
+export interface SentCollection {
+    name: string;
+    stories: (SentItem|null)[]
+}
