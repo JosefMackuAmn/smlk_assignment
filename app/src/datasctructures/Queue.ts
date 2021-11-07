@@ -1,3 +1,5 @@
+import { PromiseResolveRejectFunction } from "../types/misc";
+
 class QueueNode<T> {
     constructor(
         public value: T,
@@ -15,8 +17,7 @@ class Queue<T> {
 
     // Variables needed to determine when to resolve listenersDone
     private runningListeners = 0;
-    private resolveListenersDoneHook: (
-        (value: boolean|PromiseLike<boolean>) => void)|null = null;
+    private resolveListenersDoneHook: PromiseResolveRejectFunction|null = null;
     private isListenersDonePending = false;
 
     // Variable indicating whether all onEnqueue listeners
