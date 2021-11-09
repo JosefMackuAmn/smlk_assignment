@@ -1,6 +1,6 @@
 import express from 'express';
 import ash from 'express-async-handler';
-import { body, param } from 'express-validator';
+import { body } from 'express-validator';
 
 import * as collectionController from '../controllers/collectionController';
 import { validate } from '../middleware/validate';
