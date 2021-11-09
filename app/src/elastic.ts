@@ -14,7 +14,7 @@ class Elastic {
         this._esclient = new Client({ node: url });
     }
 
-    // Getter for esclient
+    // Getter for the esclient
     get esclient() {
         return this._esclient;
     }
