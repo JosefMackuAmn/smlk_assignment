@@ -5,6 +5,9 @@ import { HACKER_NEWS_API } from "../../constants";
 import { sequelize } from "../../sequelize";
 import { elastic } from "../../elastic";
 
+import { Logger } from "../classes/Logger";
+import { Queue } from "../../datasctructures/Queue";
+
 import { NotFoundError } from "../../errors/NotFoundError";
 import { UnprocessableEntityError } from "../../errors/UnprocessableEntityError";
 import { ThirdPartyServiceError } from "../../errors/ThirdPartyServiceError";
@@ -15,8 +18,6 @@ import { CollectionItem } from "../../models/CollectionItem";
 import { ItemHierarchy } from "../../models/ItemHierarchy";
 
 import { FetchedItem, ItemTypesEnum } from "../../types/models/item";
-import { Logger } from "../classes/Logger";
-import { Queue } from "../../datasctructures/Queue";
 
 // Fetch story and its kids
 const fetchStory = async (itemId: number, collectionId?: number) => {
@@ -34,7 +35,7 @@ const fetchStory = async (itemId: number, collectionId?: number) => {
     // Sequelize transaction
     let transaction: Transaction;
 
-    // Register onEnqueue listener
+    // Register onEnqueue listener fetching enqueued item
     itemsToFetchQueue.onEnqueue = async () => {
         const currentItemId = itemsToFetchQueue.dequeue();
         const currentFirstLevel = firstLevel;

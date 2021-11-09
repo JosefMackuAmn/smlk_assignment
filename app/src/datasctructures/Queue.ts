@@ -13,7 +13,7 @@ class Queue<T> {
     public length = 0;
 
     // Private function executed on enqueue
-    private _onEnqueue: (() => any)|null = null;
+    private _onEnqueue: (() => void)|null = null;
 
     // Variables needed to resolve listenersDone
     private runningListeners = 0;
@@ -35,6 +35,7 @@ class Queue<T> {
                 try {
                     await cb();
                 } catch (err) {
+                    // Reject listenersDone
                     this.isListenersDonePending = false;
                     if (this.rejectListenersDoneHook) {
                         this.rejectListenersDoneHook(false);
@@ -77,7 +78,7 @@ class Queue<T> {
         if (this._onEnqueue) {
             // If listenersDone is resolved
             // assign it to a new pending promise
-            // and hook its resolve function
+            // and hook its resolve and reject function
             if (!this.isListenersDonePending) {
                 this.isListenersDonePending = true;
                 this.listenersDone = new Promise((resolve, reject) => {
