@@ -1,5 +1,4 @@
 import supertest from "supertest";
-import fetch from "node-fetch";
 
 import { app } from "../../app";
 
@@ -23,9 +22,9 @@ describe('GET /search', () => {
         await saveStory(token, collectionName);
 
         const { body } = await supertest(app)
-        .get(`/search?q="story"`)
-        .send()
-        .expect(200)
+            .get(`/search?q="story"`)
+            .send()
+            .expect(200)
 
         expect(body.length).toEqual(1);
     });

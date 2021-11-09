@@ -1,0 +1,2844 @@
+import { Sequelize } from 'sequelize';
+
+const {
+    DB_NAME,
+    DB_HOST,
+    DB_USER,
+    DB_PASSWORD
+} = process.env;
+
+const sequelize = new Sequelize(
+    DB_NAME!, DB_USER!, DB_PASSWORD!, {
+        dialect: 'mysql',
+        host: DB_HOST!,
+        logging: false,
+        pool: {
+            max: 30
+        }
+    }
+);
+
+export { sequelize };
+import { app } from './app';
+import { sequelize } from './sequelize';
+import { elastic } from './elastic';
+
+import { Cron } from './util/classes/Cron/Cron';
+import { Checker } from './util/classes/Checker';
+import { Logger } from './util/classes/Logger';
+
+// Check environment setup
+Checker.checkEnvironment();
+
+// Connect to db
+Logger.log({ location: 'index.ts', info: 'Connecting to database...' });
+sequelize.sync(/* { force: true } */).then(() => {
+    Logger.log({ location: 'index.ts', info: 'Connected to database!' });
+    
+    // Connect to elasticsearch
+    // and initialize index and mapping
+    Logger.log({ location: 'index.ts', info: 'Connecting to elasticsearch...' });
+    elastic.checkConnection({ init: true/* , force: true */ }).then(async () => {
+        Logger.log({ location: 'index.ts', info: 'Connected to elasticsearch!' });
+        
+        // Schedule CRON tasks
+        Cron.scheduleTasks();
+        
+        // Listen
+        const PORT = process.env.PORT || 8080;
+        app.listen(PORT, () => {
+            Logger.log({ location: 'index.ts', info: `Listening on port ${PORT}!` });
+        });
+    });
+})
+declare global {
+    namespace NodeJS {
+        interface ProcessEnv {
+            NODE_ENV?: string;
+            TOKEN_KEY?: string;
+            PORT?: string;
+            DB_NAME?: string;
+            DB_TEST_NAME?: string;
+            DB_HOST?: string;
+            DB_USER?: string;
+            DB_PASSWORD?: string;
+            ELASTIC_HOST?: string;
+            ELASTIC_URL?: string;
+        }
+    }
+}
+
+export {};
+import { Client } from "@elastic/elasticsearch";
+import { SearchHitsMetadata, SearchResponse } from "@elastic/elasticsearch/api/types";
+
+import { CheckConnectionOptions, ESItem } from "./types/elastic";
+import { Logger } from "./util/classes/Logger";
+
+class Elastic {
+    public readonly ES_INDEX_NAME = 'items';
+    public readonly ES_MAPPING_TYPE_NAME = 'item';
+
+    private _esclient;
+
+    constructor(url: string) {
+        this._esclient = new Client({ node: url });
+    }
+
+    // Getter for the esclient
+    get esclient() {
+        return this._esclient;
+    }
+
+    // Resolves on establishing connection to elasticsearch
+    // and conditionally creates an index and a mapping
+    async checkConnection({ init = false, force = false }: CheckConnectionOptions) {
+        let connected = false;
+    
+        while (!connected) {
+            try {
+                await this._esclient.cluster.health({});
+                connected = true;
+            } catch (err) {}
+        }
+
+        if (init) await this.initIndexAndMapping(force);
+
+        return true;
+    }
+
+    // Initialize index and mapping
+    async initIndexAndMapping(force: boolean = false) {
+        const elasticIndex = await this._esclient.indices.exists({
+            index: this.ES_INDEX_NAME
+        });
+
+        if (!elasticIndex) {
+            await this.createIndex();
+            await this.setItemMapping();
+        } else if (force) {
+            await this._esclient.indices.delete({ index: this.ES_INDEX_NAME });
+            await this.createIndex();
+            await this.setItemMapping();
+        }
+    }
+
+    // Creates index
+    async createIndex() {
+        try {
+            await this._esclient.indices.create({ index: this.ES_INDEX_NAME });
+            Logger.log({
+                location: Elastic.name,
+                info: `Created index ${this.ES_INDEX_NAME}`
+            });
+        } catch (err) {
+            Logger.error({
+                error: err,
+                location: Elastic.name,
+                info: `An error occurred while creating the index ${this.ES_INDEX_NAME}`
+            });
+        }
+    }
+
+    // Sets item mapping
+    async setItemMapping() {
+        try {
+            // Define mapping
+            const itemSchema = {
+                itemId: { type: "integer" },
+                title: { type: "text" },
+                text: { type: "text" },
+                author: { type: "text" },
+                type: { type: "text" }
+            };
+        
+            // Apply mapping
+            await this._esclient.indices.putMapping({
+              index: this.ES_INDEX_NAME,
+              type: this.ES_MAPPING_TYPE_NAME,
+              include_type_name: true,
+              body: { 
+                properties: itemSchema
+              } 
+            })
+        
+            Logger.log({
+                location: Elastic.name,
+                info: `${this.ES_MAPPING_TYPE_NAME} mapping created successfully`
+            });        
+          } catch (err) {
+            Logger.error({
+                error: err,
+                location: Elastic.name,
+                info: `An error occurred while creating the ${this.ES_MAPPING_TYPE_NAME} mapping`
+            });
+          }
+    }
+
+    // Searches and returns items matching a query
+    async searchItem(q: string) {
+        // Search
+        const { body: { hits } } = await this._esclient.search<SearchResponse<ESItem>>({
+            index: this.ES_INDEX_NAME, 
+            type: this.ES_MAPPING_TYPE_NAME,
+            body: {
+                query: {
+                    multi_match: {
+                        query: q,
+                        fields: [
+                            "title", "text", "author", "type"
+                        ]
+                    }
+                }
+            }
+        });
+
+        // Get important data
+        const values = this.processHits(hits);
+        
+        return values;    
+    }
+
+    // Search for an item by itemId
+    async getItemById(id: number) {
+        const { body: { hits }} = await this._esclient.search<SearchResponse<ESItem>>({
+            index: this.ES_INDEX_NAME,
+            type: this.ES_MAPPING_TYPE_NAME,
+            body: {
+                query: {
+                    match: {
+                        itemId: {
+                            query: id
+                        }
+                    }
+                }
+            }
+        });
+
+        // Get important data
+        const values = await this.processHits(hits);
+        
+        return values[0];
+    }
+
+    // Saves new item into elasticsearch
+    async addItem(item: ESItem) {
+        // Insert new item
+        return await this._esclient.index({
+            index: this.ES_INDEX_NAME,
+            type: this.ES_MAPPING_TYPE_NAME,
+            refresh: true,
+            body: { ...item }
+        });
+    }
+
+    // Updates existing item
+    async updateItem(id: string, item: ESItem) {
+        return await this._esclient.update({
+            index: this.ES_INDEX_NAME,
+            id: id,
+            refresh: true,
+            body: {
+                doc: {
+                    ...item
+                }
+            }
+        });
+    }
+
+    // Extract the relevant information from hits
+    private async processHits(hits: SearchHitsMetadata<ESItem>) {
+        return hits.hits.map((hit) => {
+            return {
+                id: hit._id,
+                itemId: hit._source?.itemId,
+                score: hit._score,
+                title: hit._source?.title,
+                by: hit._source?.author,
+                text: hit._source?.text,
+                type: hit._source?.type,
+            }
+        });
+    }
+}
+
+const elastic = new Elastic(process.env.ELASTIC_URL!);
+
+export { elastic };
+declare namespace Express {
+    export interface Request {
+        decodedJwt?: {
+           nick: string;
+           iat: number;
+           exp: number;
+        }
+    }
+}
+export const HACKER_NEWS_API = 'https://hacker-news.firebaseio.com/v0';
+import express, { NextFunction, Request, Response } from 'express';
+
+import { authenticationRouter } from './routers/authenticationRouter';
+import { collectionRouter } from './routers/collectionRouter';
+import { searchRouter } from './routers/searchRouter';
+import { storyRouter } from './routers/storyRouter';
+import * as errorController from './controllers/errorController';
+
+import { isAuthenticated } from './middleware/isAuthenticated';
+
+import { ModelAssociations } from './util/classes/ModelAssociations';
+
+const app = express();
+
+// Configuration and preprocessing
+app.use(express.json());
+app.use((req: Request, res: Response, next: NextFunction) => {
+    res.set('Content-Type', 'application/json');
+    next();
+});
+
+// Register routes
+app.use('/auth', authenticationRouter);
+app.use('/search', searchRouter);
+app.use('/collection', isAuthenticated, collectionRouter);
+app.use('/collection', isAuthenticated, storyRouter);
+
+// Error handling
+app.use(errorController.notFoundHandler);
+app.use(errorController.errorHandler);
+
+// Create model associations
+ModelAssociations.create();
+
+export { app };
+import fetch from "node-fetch";
+import { Transaction } from "sequelize/types";
+
+import { HACKER_NEWS_API } from "../../constants";
+import { sequelize } from "../../sequelize";
+import { elastic } from "../../elastic";
+
+import { Logger } from "../classes/Logger";
+import { Queue } from "../../datasctructures/Queue";
+
+import { NotFoundError } from "../../errors/NotFoundError";
+import { UnprocessableEntityError } from "../../errors/UnprocessableEntityError";
+import { ThirdPartyServiceError } from "../../errors/ThirdPartyServiceError";
+import { CustomError } from "../../errors/CustomError";
+
+import { Item } from "../../models/Item";
+import { CollectionItem } from "../../models/CollectionItem";
+import { ItemHierarchy } from "../../models/ItemHierarchy";
+
+import { FetchedItem, ItemTypesEnum } from "../../types/models/item";
+
+// Fetch story and its kids
+const fetchStory = async (itemId: number, collectionId?: number) => {
+    const itemsToFetchQueue = new Queue<number>();
+
+    // True for itemId / the first item to be fetched
+    let firstLevel = true;
+
+    // Expected error potentially occuring during the first level fetch
+    // or an unexpected (ThirdPartyServiceError) error.
+    // Expected errors during subsequent fetches
+    // are ignored in the listener function below.
+    let fetchingError: CustomError|null = null;
+
+    // Sequelize transaction
+    let transaction: Transaction;
+
+    // Register onEnqueue listener fetching enqueued item
+    itemsToFetchQueue.onEnqueue = async () => {
+        const currentItemId = itemsToFetchQueue.dequeue();
+        const currentFirstLevel = firstLevel;
+        firstLevel = false;
+
+        // Try-catch block for 
+        // any unexpected error
+        try {
+            // Fetch the item
+            let itemData = await fetch(`${HACKER_NEWS_API}/item/${currentItemId}.json`);
+            if (!itemData || !itemData.ok) {
+                if (currentFirstLevel) fetchingError = new NotFoundError();            
+                return;
+            };
+            
+            // Get the item object
+            const fetchedItem = await itemData.json() as FetchedItem;
+            if (!fetchedItem) {
+                if (currentFirstLevel) fetchingError = new NotFoundError();            
+                return;
+            };
+        
+            // Check the item type for 'story' (or 'comment')
+            if (
+                (currentFirstLevel && fetchedItem.type !== ItemTypesEnum.story) ||
+                !(fetchedItem.type in ItemTypesEnum)
+            ) {
+                if (currentFirstLevel) fetchingError = new UnprocessableEntityError();            
+                return;
+            };
+        
+            // Check for item existence in DB
+            // save the item if doesn't exist yet
+            // update the item if exists
+            let item = await Item.findByPk(fetchedItem.id);
+            if (!item) {
+                item = await Item.create({
+                    itemId: fetchedItem.id,
+                    ...fetchedItem
+                }, { transaction });
+            } else {
+                await item.update({
+                    ...fetchedItem
+                }, { transaction });
+            }
+        
+            // Create association with collection
+            if (collectionId) {
+                await CollectionItem.findOrCreate({
+                    where: {
+                        collectionId: collectionId,
+                        itemId: item.itemId
+                    },
+                    transaction: transaction
+                });
+            }
+        
+            // Create hierarchy record
+            const parentId = fetchedItem.parent || null;
+            await ItemHierarchy.findOrCreate({
+                where: {
+                    itemId: item.itemId,
+                    parentId: parentId
+                },
+                transaction: transaction
+            });
+        
+            // Save the item into the elasticsearch
+            const itemInElastic = await elastic.getItemById(item.itemId);
+            if (itemInElastic) {
+                // Update item if exists
+                await elastic.updateItem(itemInElastic.id, {
+                    itemId: item.itemId,
+                    type: item.type,
+                    text: item.text || '',
+                    author: item.by || '',
+                    title: item.title || ''
+                });
+            } else {
+                // Add item if doesn't exist
+                await elastic.addItem({
+                    itemId: item.itemId,
+                    type: item.type,
+                    text: item.text || '',
+                    author: item.by || '',
+                    title: item.title || ''
+                });
+            }
+        
+            // Enqueue kid elements for fetching
+            fetchedItem.kids?.forEach(kid => {
+                itemsToFetchQueue.enqueue(kid);
+            });
+        } catch (err) {
+            Logger.error({
+                location: 'fetchStory function',
+                error: err,
+                info: 'Unexpected error occured during fetching process'
+            });
+            fetchingError = new ThirdPartyServiceError();
+            throw err;
+        }
+    };
+
+    await sequelize.transaction(async (t) => {
+        // Assign transaction variable
+        transaction = t;
+
+        // Start fetching process by enqueuing the first itemId
+        itemsToFetchQueue.enqueue(itemId);
+
+        // Await for the whole item tree to be fetched
+        await itemsToFetchQueue.listenersDone;
+    });
+
+    // If any error occured, throw it
+    if (fetchingError) throw fetchingError;
+
+    return;
+}
+
+export { fetchStory };
+import fetch from 'node-fetch';
+
+import { elastic } from '../../elastic';
+
+import { UnprocessableEntityError } from '../../errors/UnprocessableEntityError';
+import { NotFoundError } from '../../errors/NotFoundError';
+
+import { Item } from "../../models/Item";
+import { CollectionItem } from "../../models/CollectionItem";
+import { ItemHierarchy } from "../../models/ItemHierarchy";
+
+import { asyncMap } from "./asyncMap";
+import { Logger } from '../classes/Logger';
+
+import { FetchedItem, ItemTypesEnum } from '../../types/models/item';
+import { HACKER_NEWS_API } from '../../constants';
+
+/**
+ * @deprecated Inefficient, use fetchStory function instead
+ */
+const fetchAndProcessItem = async (itemId: number, collectionId?: number, firstLevel: boolean = false) => {
+    // Fetch the item
+    const itemData = await fetch(`${HACKER_NEWS_API}/item/${itemId}.json`);
+    if (!itemData || !itemData.ok) throw new NotFoundError();
+    
+    // Get the item object
+    const fetchedItem = await itemData.json() as FetchedItem;
+    if (!fetchedItem) throw new NotFoundError();
+
+    // Check the item type for 'story' (or 'comment')
+    if (
+        (firstLevel && fetchedItem.type !== ItemTypesEnum.story) ||
+        !(fetchedItem.type in ItemTypesEnum)
+    ) throw new UnprocessableEntityError();
+
+    // Check for item existence in DB
+    // save the item if doesn't exist yet
+    let item = await Item.findByPk(fetchedItem.id);
+    if (!item) {
+        item = await Item.create({
+            itemId: fetchedItem.id,
+            ...fetchedItem
+        });
+    } else {
+        await item.update({
+            ...fetchedItem
+        });
+    }
+
+    // Create association for only 'story'
+    if (firstLevel && collectionId) {
+        const collectionItemRecord = await CollectionItem.findOne({
+            where: {
+                collectionId: collectionId,
+                itemId: item.itemId
+            }
+        });
+        if (!collectionItemRecord) {
+            await CollectionItem.create({
+                collectionId: collectionId,
+                itemId: item.itemId
+            });
+        }
+    }
+
+    // Create hierarchy record
+    const parentId = fetchedItem.parent || null;
+    const itemHierarchyRecord = await ItemHierarchy.findOne({
+        where: {
+            itemId: item.itemId,
+            parentId: parentId
+        }
+    });
+    if (!itemHierarchyRecord) {
+        await ItemHierarchy.create({
+            itemId: item.itemId,
+            parentId: parentId
+        });
+    }
+
+    // Try to save the item into the es
+    try {
+        await elastic.addItem({
+            itemId: item.itemId,
+            type: item.type,
+            text: item.text || '',
+            author: item.by || '',
+            title: item.title || ''
+        });
+    } catch (err) {
+        Logger.error({
+            location: 'fetchAndProcessItem function',
+            error: err,
+            info: `Couldn't save item ${item.itemId} into elasticsearch`
+        });
+    }
+
+    // Recursively fetch and process kid items
+    if (fetchedItem.kids) {
+        await asyncMap(fetchedItem.kids, async (kid) => {
+            await fetchAndProcessItem(kid, collectionId);
+        });
+    }
+}
+
+export { fetchAndProcessItem };
+// Calls async callback on every item in an input array
+// and waits for it to finish before returning an array
+// of callback's return values
+const asyncMap = async <P, T>(arr: T[], cb: (item: T, idx: number) => Promise<P>) => {
+    return Promise.all(arr.map((item, idx) => {
+        return cb(item, idx);
+    }));
+}
+
+export { asyncMap };
+import { WithIds, WithKids } from "../../types/util/functions/arrayToTree";
+
+// Converts a flat array into an array of trees
+const arrayToTree = <T extends WithIds>(array: T[]) => {
+    // Variable containing itemId as a key and an item as a value
+    const map: { [key: string|number]: WithKids<T> } = {};
+
+    // An array of items with no parentId
+    // which will be populated with kid elements
+    const roots: WithKids<T>[] = [];
+
+    // Populate map variable
+    array.forEach((item) => {
+        map[item.itemId] = {
+            ...item,
+            kids: []
+        }
+    });
+
+    array.forEach((item) => {
+        if (!item.parentId || item.parentId === '0') {
+            // Push to roots if this is a top-level item
+            roots.push(map[item.itemId]);
+        } else {
+            // Push kid item into an array of kid items
+            // of parent element            
+            map[item.parentId].kids.push(item)
+        }
+    });
+
+    return roots;
+}
+
+export { arrayToTree };
+import { Collection } from "../../models/Collection";
+import { CollectionItem } from "../../models/CollectionItem";
+import { Item } from "../../models/Item";
+import { ItemHierarchy } from "../../models/ItemHierarchy";
+import { User } from "../../models/User";
+
+class ModelAssociations {
+    static create() {
+        Collection.belongsTo(User, {
+            constraints: true,
+            onDelete: 'CASCADE',
+            onUpdate: 'CASCADE',
+            foreignKey: 'userNick',
+            foreignKeyConstraint: true
+        });
+        User.hasMany(Collection, {
+            foreignKey: 'userNick'
+        });
+        
+        Item.belongsToMany(Collection, {
+            through: CollectionItem,
+            foreignKey: 'itemId'
+        });
+        Collection.belongsToMany(Item, {
+            through: CollectionItem,
+            foreignKey: 'collectionId'
+        });
+    
+        Item.hasOne(ItemHierarchy, {
+            foreignKey: 'itemId'
+        });
+        Item.hasOne(ItemHierarchy, {
+            foreignKey: 'parentId'
+        });
+    
+        Item.hasMany(CollectionItem, {
+            foreignKey: 'itemId'
+        });
+    }
+}
+
+export { ModelAssociations };
+import { LoggerErrorOptions, LoggerLogOptions } from "../../types/util/classes/logger";
+
+class Logger {
+    // Logging non-error logs
+    static log({ location, info }: LoggerLogOptions) {
+        console.log(new Date().toISOString());
+        console.log(`${location}: ${info}`);
+    }
+
+    // Logging errors
+    static error({ location, error, info }: LoggerErrorOptions) {
+        console.log("---------------------------------------");
+        console.log(new Date().toISOString());
+        console.log(`Location: ${location}`);
+        if (info) {
+            console.log(`Info: ${info}`)
+        }
+        console.log(error);
+        console.log("---------------------------------------");
+    }
+}
+
+export { Logger };
+import { CustomErrorMessage } from "../../types/errors";
+import { NodeEnvsEnum } from "../../types/misc";
+
+class Checker {
+    // Check whether all expected environment
+    // variables are set correctly
+    static checkEnvironment() {
+        // An array with potential errors
+        const errors: CustomErrorMessage[] = [];
+        
+        const {
+            NODE_ENV,
+            TOKEN_KEY,
+            DB_NAME,
+            DB_USER,
+            DB_PASSWORD,
+            PORT,
+            ELASTIC_HOST,
+            ELASTIC_URL,
+        } = process.env;
+    
+        // An utility function not to repeat myself
+        // when pushing new error
+        const pushNewError = (
+            field: string,
+            message: string = 'Environment variable is not defined'
+        ) => {
+            errors.push({
+                message, field
+            });
+        }
+    
+        // NODE_ENV
+        if (!NODE_ENV)
+            pushNewError('NODE_ENV')
+        else if (!Object.keys(NodeEnvsEnum).includes(NODE_ENV))
+            pushNewError(
+                'NODE_ENV',
+                'Unknown NODE_ENV value'
+            )
+    
+        // Elasticsearch related variables
+        if (!ELASTIC_HOST)
+            pushNewError('ELASTIC_HOST')
+        if (!ELASTIC_URL)
+            pushNewError('ELASTIC_URL')
+    
+        // MySQL related variables
+        if (!DB_NAME)
+            pushNewError('DB_NAME')
+        if (!DB_USER)
+            pushNewError('DB_USER')
+        if (!DB_PASSWORD)
+            pushNewError('DB_PASSWORD')
+    
+        // Other
+        if (!TOKEN_KEY)
+            pushNewError('TOKEN_KEY')
+    
+        if (!PORT)
+            pushNewError('PORT')
+        else if (isNaN(+PORT))
+            pushNewError(
+                'PORT',
+                'Variable should be numeric'
+            )
+    
+        // Throw error if there are errors with
+        // environment variables
+        if (errors.length) throw new Error(JSON.stringify(errors));
+    }
+}
+
+export { Checker };
+import { fetchStory } from "../../functions/fetchStory";
+
+import { Item } from "../../../models/Item";
+
+import { ItemTypesEnum } from "../../../types/models/item";
+
+import { Logger } from "../Logger";
+
+// Refetches all stories in database
+export const updateItems = async () => {
+    Logger.log({
+        location: 'Cron updateItems',
+        info: 'Synchornizing items...'
+    });
+
+    // Find all story items
+    const allStories = await Item.findAll({
+        where: { type: ItemTypesEnum.story }
+    });
+
+    // Fetch all of them
+    for (const story of allStories) {
+        try {
+            await fetchStory(story.itemId);
+        } catch (err) {
+            Logger.error({
+                location: 'Cron updateItems',
+                error: err,
+                info: `Couldn't fetch story ${
+                    story.itemId} during scheduled update`
+            })
+        }
+    }
+
+    Logger.log({
+        location: 'Cron updateItems',
+        info:'Items synchronized!'
+    });
+}
+import cron from 'node-cron';
+
+import { updateItems } from './cronTasks';
+
+class Cron {
+    static scheduleTasks() {
+        cron.schedule('0 0 * * *', updateItems);
+    }
+}
+
+export { Cron };
+export enum NodeEnvsEnum {
+    test = 'test',
+    prod = 'prod',
+    dev = 'dev'
+};
+
+export interface DecodedJwt {
+    nick: string;
+    iat: number;
+    exp: number;
+}
+export interface CustomErrorMessage {
+    message: string;
+    field?: string;
+};
+export interface ESItem {
+    itemId: number;
+    text: string;
+    author: string;
+    title: string;
+    type: string;
+}
+
+export interface CheckConnectionOptions {
+    init?: boolean;
+    force?: boolean;
+}
+export interface WithIds {
+    parentId: string|number|null;
+    itemId: string|number;
+}
+
+export type WithKids<T> = T & {
+    kids: T[];
+}
+export interface LoggerErrorOptions {
+    error: any;
+    location: string;
+    info?: string;
+}
+
+export interface LoggerLogOptions {
+    location: string;
+    info: string;
+}
+import { HasManyCreateAssociationMixin, Model, ModelCtor } from "sequelize/types";
+import { CollectionInstance } from "./collection";
+
+export interface UserAttrs {
+    userNick: string;
+    password: string;
+}
+
+export interface UserCreationAttrs extends UserAttrs {};
+
+export interface UserInstance extends Model<
+    UserAttrs, UserCreationAttrs
+>, UserAttrs {
+    createdAt: Date;
+    updatedAt: Date;
+
+    createCollection: HasManyCreateAssociationMixin<
+        ModelCtor<CollectionInstance>
+    >;
+};
+import { Model, Optional } from "sequelize/types";
+
+export interface ItemHierarchyAttrs {
+    hierarchyId: number;
+    itemId: number;
+    parentId: number | null;
+}
+
+export interface ItemHierarchyCreationAttrs
+    extends Optional<ItemHierarchyAttrs, 'hierarchyId'> {};
+
+export interface ItemHierarchyInstance extends Model<
+    ItemHierarchyAttrs, ItemHierarchyCreationAttrs
+>, ItemHierarchyAttrs {
+    createdAt: Date;
+    updatedAt: Date;
+};
+import { Model } from "sequelize/types";
+
+export enum ItemTypesEnum {
+    story = 'story',
+    comment = 'comment'
+}
+
+export interface ItemAttrs {
+    itemId: number;
+    deleted?: boolean;
+    type: string;
+    by?: string;
+    time: number;
+    text?: string;
+    dead?: boolean;
+    url?: string;
+    score?: number;
+    title?: string;
+    descendants?: number;
+}
+
+export interface ItemCreationAttrs extends ItemAttrs {};
+
+export interface ItemInstance extends Model<
+    ItemAttrs, ItemCreationAttrs
+>, ItemAttrs {
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface FetchedItem extends Omit<ItemAttrs, 'itemId'> {
+    id: number;
+    kids?: number[];
+    parent?: number;
+}
+
+export interface ItemWithParentId extends ItemAttrs {
+    parentId: number|null;
+}
+
+export interface SentItem extends ItemWithParentId {
+    kids?: (SentItem|null)[];
+}
+import { Model, Optional } from "sequelize/types";
+
+export interface CollectionItemAttrs {
+    collectionItemId: number;
+    collectionId: number;
+    itemId: number;
+}
+
+export interface CollectionItemCreationAttrs
+    extends Optional<CollectionItemAttrs, 'collectionItemId'> {};
+
+export interface CollectionItemInstance extends Model<
+    CollectionItemAttrs, CollectionItemCreationAttrs
+>, CollectionItemAttrs {
+    createdAt: Date;
+    updatedAt: Date;
+};
+import { Model, Optional } from "sequelize/types";
+
+import { SentItem } from "./item";
+
+export interface CollectionAttrs {
+    collectionId: number;
+    name: string;
+    userNick: string;
+}
+
+export interface CollectionCreationAttrs
+    extends Optional<CollectionAttrs, 'collectionId'> {};
+
+export interface CollectionInstance extends Model<
+    CollectionAttrs, CollectionCreationAttrs
+>, CollectionAttrs {
+    createdAt: Date;
+    updatedAt: Date;
+};
+
+export interface SentCollection {
+    name: string;
+    stories: (SentItem|null)[]
+}
+export type PromiseResolveRejectFunction = (
+    value: boolean|PromiseLike<boolean>) => void;
+
+export type OnEnqueueFunction = (() => void|Promise<void>)|null;
+process.env.TOKEN_KEY = 'test';
+
+import { elastic } from '../elastic';
+import { sequelize } from '../sequelize';
+import { Checker } from '../util/classes/Checker';
+
+jest.setTimeout(25000);
+
+jest.mock('node-fetch');
+// For some reason not working, temporary substituted with @ts-ignores
+// const mockedFetch = fetch as jest.Mocked<typeof fetch>;
+
+beforeAll(async () => {
+    Checker.checkEnvironment();
+    await elastic.checkConnection({ init: true });
+});
+
+afterAll(async () => {
+    await sequelize.close();
+});
+import express from 'express';
+import ash from 'express-async-handler';
+import { param } from 'express-validator';
+
+import * as storyController from '../controllers/storyController';
+import { validate } from '../middleware/validate';
+
+const router = express.Router();
+
+router.post('/:collectionName/:storyId', [
+    param('storyId')
+        .isNumeric()
+        .withMessage('storyId must be numeric')
+], validate, ash(storyController.postStory));
+
+router.delete('/:collectionName/:storyId', [
+    param('storyId')
+        .isNumeric()
+        .withMessage('storyId must be numeric')
+], validate, ash(storyController.deleteStory));
+
+export { router as storyRouter };
+import express from 'express';
+import ash from 'express-async-handler';
+import { query } from 'express-validator';
+
+import * as searchController from '../controllers/searchController';
+import { validate } from '../middleware/validate';
+
+const router = express.Router();
+
+router.get('', [
+    query('q')
+        .notEmpty()
+        .withMessage('query param "q" has to have a value')
+        .isString()
+        .withMessage('query param "q" has to be a string')
+], validate, ash(searchController.getSearch));
+
+export { router as searchRouter };
+import express from 'express';
+import ash from 'express-async-handler';
+import { body } from 'express-validator';
+
+import * as collectionController from '../controllers/collectionController';
+import { validate } from '../middleware/validate';
+
+const router = express.Router();
+
+router.post('', [
+    body('name')
+        .notEmpty()
+        .withMessage('name must not be empty')
+        .isLength({ max: 20 })
+        .withMessage('maximum name length is 20')
+], validate, ash(collectionController.postCollection));
+
+router.get('/:collectionName', ash(collectionController.getCollection));
+
+router.delete('/:collectionName', ash(collectionController.deleteCollection));
+
+export { router as collectionRouter };
+import express from 'express';
+import ash from 'express-async-handler';
+import { body } from 'express-validator';
+
+import * as authenticationController from '../controllers/authenticationController';
+import { validate } from '../middleware/validate';
+
+const router = express.Router();
+
+const validators = [
+    body('nick')
+        .notEmpty()
+        .withMessage('nick must not be empty')
+        .isLength({ max: 20 })
+        .withMessage('maximum nick length is 20'),
+    body('password')
+        .notEmpty()
+        .isLength({ min: 5 })
+        .withMessage('password has to be at least 5 characters long')
+];
+
+router.post(
+    '', validators, validate, ash(authenticationController.postNewUser)
+);
+
+router.post(
+    '/login', validators, validate, ash(authenticationController.postLogin)
+);
+
+export { router as authenticationRouter };
+import { DataTypes } from "sequelize";
+
+import { sequelize } from '../sequelize';
+
+import { UserAttrs, UserInstance } from "../types/models/user";
+
+const User = sequelize.define<UserInstance, UserAttrs>('user', {
+    userNick: {
+        type: DataTypes.STRING(20),
+        primaryKey: true,
+        allowNull: false
+    },
+    password: {
+        type: DataTypes.CHAR(60),
+        allowNull: false
+    }
+}, {
+    tableName: 'users'
+});
+
+export { User };
+import { DataTypes } from "sequelize";
+
+import { sequelize } from '../sequelize';
+
+import {
+    ItemHierarchyAttrs,
+    ItemHierarchyInstance
+} from "../types/models/itemHierarchy";
+
+const ItemHierarchy = sequelize.define<
+    ItemHierarchyInstance, ItemHierarchyAttrs
+>('itemHierarchy', {
+    hierarchyId: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+        allowNull: false
+    },
+    itemId: {
+        type: DataTypes.INTEGER,
+        allowNull: false
+    },
+    parentId: DataTypes.INTEGER
+}, {
+    tableName: 'itemHierarchies'
+});
+
+export { ItemHierarchy };
+import { DataTypes } from "sequelize";
+
+import { sequelize } from '../sequelize';
+
+import { ItemAttrs, ItemInstance, ItemTypesEnum } from "../types/models/item";
+
+const Item = sequelize.define<ItemInstance, ItemAttrs>('item', {
+    itemId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        primaryKey: true
+    },
+    deleted: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+    type: {
+        type: DataTypes.ENUM(...Object.keys(ItemTypesEnum)),
+        allowNull: false
+    },
+    by: {
+        type: DataTypes.STRING,
+        defaultValue: null
+    },
+    time: {
+        type: DataTypes.DATE,
+        allowNull: false
+    },
+    text: DataTypes.TEXT,
+    dead: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+    url: DataTypes.STRING,
+    score: DataTypes.MEDIUMINT.UNSIGNED,
+    title: DataTypes.STRING,
+    descendants: DataTypes.SMALLINT.UNSIGNED
+}, {
+    tableName: 'items'
+});
+
+export { Item };
+import { DataTypes } from "sequelize";
+
+import { sequelize } from '../sequelize';
+
+import {
+    CollectionItemAttrs,
+    CollectionItemInstance
+} from "../types/models/collectionItem";
+
+const CollectionItem = sequelize.define<
+    CollectionItemInstance, CollectionItemAttrs
+>('collectionItem', {
+    collectionItemId: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+        allowNull: false
+    },
+    collectionId: {
+        type: DataTypes.INTEGER,
+        allowNull: false
+    },
+    itemId: {
+        type: DataTypes.INTEGER,
+        allowNull: false
+    }
+}, {
+    tableName: 'collectionItems'
+});
+
+export { CollectionItem };
+import { DataTypes } from "sequelize";
+
+import { sequelize } from '../sequelize';
+
+import {
+    CollectionAttrs,
+    CollectionInstance
+} from "../types/models/collection";
+
+const Collection = sequelize.define<
+    CollectionInstance, CollectionAttrs
+>('collection', {
+    collectionId: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        allowNull: false,
+        primaryKey: true
+    },
+    name: {
+        type: DataTypes.STRING(20),
+        allowNull: false
+    },
+    userNick: {
+        type: DataTypes.STRING(20),
+        allowNull: false
+    }
+}, {
+    tableName: 'collections',
+    indexes: [
+        {
+            name: 'nameByUserNick',
+            unique: true,
+            fields: ['userNick', 'name']
+        }
+    ]
+});
+
+export { Collection };
+import { NextFunction, Request, Response } from "express";
+import { validationResult } from "express-validator";
+
+import { RequestValidationError } from "../errors/RequestValidationError";
+
+// Ensures expected input is valid
+const validate = (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        throw new RequestValidationError(errors.array());
+    }
+    next();
+}
+
+export { validate };
+import { NextFunction, Request, Response } from "express";
+import jwt from 'jsonwebtoken';
+
+import { InvalidCredentialsError } from "../errors/InvalidCredentialsError";
+import { DecodedJwt } from "../types/misc";
+
+const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
+    const token = req.body.token as string|undefined;
+
+    if (!token) {
+        throw new InvalidCredentialsError();
+    }
+
+    // Verify token
+    try {
+        const decoded = jwt.verify(token, process.env.TOKEN_KEY!) as DecodedJwt;
+        req.decodedJwt = decoded;
+    } catch (err) {
+        throw new InvalidCredentialsError();
+    }
+
+    next();
+}
+
+export { isAuthenticated };
+import { CustomError } from "./CustomError";
+
+class UnprocessableEntityError extends CustomError {
+    statusCode = 422;
+
+    constructor() {
+        super('Unprocessable Entity');
+    }
+
+    serializeErrors() {
+        return [{ message: this.message }];
+    }
+}
+
+export { UnprocessableEntityError };
+import { CustomError } from "./CustomError";
+
+class ThirdPartyServiceError extends CustomError {
+    statusCode = 503;
+
+    constructor() {
+        super('Service Unavailable');
+    }
+
+    serializeErrors() {
+        return [{
+            message: 'Service Unavailable'
+        }];
+    }
+}
+
+export { ThirdPartyServiceError };
+import { CustomError } from "./CustomError";
+
+class SourceExistsError extends CustomError {
+    statusCode = 409;
+
+    constructor() {
+        super('Source exists');
+    }
+
+    serializeErrors() {
+        return [{ message: 'Source exists' }];
+    };
+}
+
+export { SourceExistsError };
+import { ValidationError } from 'express-validator';
+
+import { CustomError } from "./CustomError";
+
+class RequestValidationError extends CustomError {
+    statusCode = 400;
+
+    constructor(
+        public errors: ValidationError[]
+    ) {
+        super('Invalid request parameters');
+    }
+
+    serializeErrors() {
+        return this.errors.map(err => ({
+            message: err.msg,
+            field: err.param
+        }));
+    }
+}
+
+export { RequestValidationError };
+import { CustomError } from "./CustomError";
+
+class NotFoundError extends CustomError {
+    statusCode = 404;
+
+    constructor() {
+        super('Not Found');
+    }
+
+    serializeErrors() {
+        return [{ message: 'Not Found' }];
+    }
+}
+
+export { NotFoundError };
+import { CustomError } from "./CustomError";
+
+class InvalidCredentialsError extends CustomError {
+    statusCode = 401;
+
+    constructor() {
+        super('Invalid credentials');
+    }
+
+    serializeErrors() {
+        return [{ message: this.message }]
+    }
+}
+
+export { InvalidCredentialsError };
+import { CustomErrorMessage } from "../types/errors";
+
+export abstract class CustomError extends Error {
+    abstract statusCode: number;
+
+    constructor(msg: string) {
+        super(msg);
+    }
+
+    abstract serializeErrors(): CustomErrorMessage[];
+}
+import { 
+    OnEnqueueFunction,
+    PromiseResolveRejectFunction
+} from '../types/datastructures/queue';
+
+class QueueNode<T> {
+    constructor(
+        public value: T,
+        public next: QueueNode<T>|null = null
+    ) {}
+}
+
+class Queue<T> {
+    public head: QueueNode<T>|null = null;
+    public tail: QueueNode<T>|null = null;
+    public length = 0;
+
+    // Private function executed on enqueue
+    private _onEnqueue: OnEnqueueFunction = null;
+
+    // Variables needed to resolve listenersDone
+    private runningListeners = 0;
+    private resolveListenersDoneHook: PromiseResolveRejectFunction|null = null;
+    private rejectListenersDoneHook: PromiseResolveRejectFunction|null = null;
+    private isListenersDonePending = false;
+
+    // Variable indicating whether all onEnqueue listeners
+    // have been completely executed
+    public listenersDone: Promise<boolean> = Promise.resolve(true);
+
+    // Setter for a function executed on enqueue
+    set onEnqueue(cb: OnEnqueueFunction) {
+        if (cb) {
+            // Create a wrapper around a provided cb
+            // resolving listenersDone when no more
+            // listeners are running
+            this._onEnqueue = async () => {
+                try {
+                    await cb();
+                } catch (err) {
+                    // Reject listenersDone
+                    this.isListenersDonePending = false;
+                    if (this.rejectListenersDoneHook) {
+                        this.rejectListenersDoneHook(false);
+                    }         
+                    this.rejectListenersDoneHook = null;
+                    this.resolveListenersDoneHook = null;
+                    this.runningListeners--;
+                    return;
+                }
+                this.runningListeners--;
+
+                if (!this.runningListeners) {
+                    // Resolve listenersDone
+                    this.isListenersDonePending = false;
+                    if (this.resolveListenersDoneHook) {
+                        this.resolveListenersDoneHook(true);
+                    }
+                    this.resolveListenersDoneHook = null;
+                    this.rejectListenersDoneHook = null;                    
+                }
+            };
+        } else {
+            this._onEnqueue = null;
+        }
+    }
+
+    enqueue(value: T) {
+        const newNode = new QueueNode(value);
+
+        if (this.head) {
+            this.head.next = newNode;
+        } else {
+            this.tail = newNode;
+        }
+
+        this.head = newNode;
+        this.length++;
+
+        if (this._onEnqueue) {
+            // If listenersDone is resolved
+            // assign it to a new pending promise
+            // and hook its resolve and reject function
+            if (!this.isListenersDonePending) {
+                this.isListenersDonePending = true;
+                this.listenersDone = new Promise((resolve, reject) => {
+                    this.resolveListenersDoneHook = resolve;
+                    this.rejectListenersDoneHook = reject;
+                });
+            }
+
+            // Increase the number of running listeners
+            this.runningListeners++;
+
+            // Call _onEnqueue function
+            this._onEnqueue();
+        };
+    }
+
+    dequeue() {
+        const currentTail = this.tail;
+
+        if (!currentTail) {
+            return null;
+        }
+
+        if (this.length === 1) {
+            this.head = null;
+        }
+
+        this.tail = currentTail.next;
+        this.length--;
+
+        return currentTail.value;
+    }
+
+    dequeueAll() {
+        const values = [];
+
+        let currentNode = this.tail;
+        while (currentNode) {
+            values.push(currentNode.value);
+            currentNode = currentNode.next;
+        }
+
+        this.tail = null;
+        this.head = null;
+        this.length = 0;
+
+        return values;
+    }
+}
+
+export { Queue };
+import { Queue } from '../Queue';
+
+describe('class Queue', () => {
+    it('enqueues node', () => {
+        const queue = new Queue<number>();
+        queue.enqueue(1);
+
+        expect(queue.head).toBeDefined();
+        expect(queue.tail).toBeDefined();
+        expect(queue.head?.value).toEqual(1);
+        expect(queue.tail?.value).toEqual(1);
+        expect(queue.length).toEqual(1);
+    });
+
+    it('dequeues from one node', () => {
+        const queue = new Queue<number>();
+        queue.enqueue(1);
+
+        const dequeueed = queue.dequeue();
+        expect(dequeueed).toEqual(1);
+
+        expect(queue.length).toEqual(0);
+        expect(queue.head).toEqual(null);
+        expect(queue.tail).toEqual(null);
+    });
+
+    it('enqueues second node', () => {
+        const queue = new Queue<number>();
+        queue.enqueue(1);
+        queue.enqueue(2);
+
+        expect(queue.head).toBeDefined();
+        expect(queue.tail).toBeDefined();
+        expect(queue.tail?.value).toEqual(1);
+        expect(queue.head?.value).toEqual(2);
+        expect(queue.length).toEqual(2);
+    });
+
+    it('dequeues from two nodes', () => {
+        const queue = new Queue<number>();
+        queue.enqueue(1);
+        queue.enqueue(2);
+
+        const dequeueed = queue.dequeue();
+        expect(dequeueed).toEqual(1);
+
+        expect(queue.head?.value).toEqual(2);
+        expect(queue.tail?.value).toEqual(2);
+    });
+
+    it('enqueues and dequeues more nodes', () => {
+        const queue = new Queue<number>();
+        queue.enqueue(1);
+        queue.enqueue(2);
+        queue.enqueue(3);
+
+        expect(queue.length).toEqual(3);
+        expect(queue.head?.value).toEqual(3);
+        expect(queue.tail?.value).toEqual(1);
+
+        expect(queue.dequeue()).toEqual(1);
+        expect(queue.dequeue()).toEqual(2);
+
+        expect(queue.length).toEqual(1);
+        
+        queue.enqueue(4);
+
+        expect(queue.length).toEqual(2);
+
+        expect(queue.dequeue()).toEqual(3);
+        expect(queue.dequeue()).toEqual(4);
+        expect(queue.dequeue()).toEqual(null);
+        expect(queue.length).toEqual(0);
+    });
+
+    it('dequeues everything', () => {
+        const queue = new Queue<number>();
+        queue.enqueue(1);
+        queue.enqueue(2);
+        queue.enqueue(3);
+        queue.enqueue(4);
+
+        const values = queue.dequeueAll();
+
+        expect(queue.tail).toEqual(null);
+        expect(queue.head).toEqual(null);
+        expect(queue.length).toEqual(0);
+        expect(values).toEqual([1, 2, 3, 4]);
+    })
+
+    it('listens for enqueue', () => {
+        const queue = new Queue<number>();
+
+        let enqueuedCount = 0;
+        queue.onEnqueue = () => {
+            enqueuedCount++;
+        }
+
+        queue.enqueue(1);
+        queue.enqueue(2);
+
+        expect(enqueuedCount).toEqual(2);
+    });
+
+    it('executes onEnqueue on enqueue', async () => {
+        const queue = new Queue<number>();
+
+        let testValue = 0;
+        queue.onEnqueue = () => {
+            testValue = 1;
+        };
+
+        queue.enqueue(1);
+
+        expect(testValue).toEqual(1);
+    });
+
+    it('resolves Queue.listenersDone on completion of all listeners', async () => {
+        const queue = new Queue<number>();
+
+        const testValues: number[] = [];
+
+        queue.onEnqueue = async () => {
+            const value = queue.dequeue();
+            return await new Promise((resolve) => {
+                setTimeout(() => {
+                    if (value!==null) {
+                        testValues.push(value);
+                    }
+                    resolve();
+                }, 20);
+            });
+        }
+
+        for (let i = 0; i < 5; i++) {
+            queue.enqueue(i);
+        }
+
+        await queue.listenersDone;
+
+        expect(testValues).toEqual([0,1,2,3,4])
+    });
+    
+    it('resolves Queue.listenersDone on completion of all listeners', async () => {
+        const queue = new Queue<number>();
+
+        const testValues: number[] = [];
+
+        queue.onEnqueue = async () => {
+            const value = queue.dequeue();
+            return await new Promise((resolve) => {
+                setTimeout(() => {
+                    if (value!==null) {
+                        testValues.push(value);
+                    }
+                    resolve();
+                }, 20);
+            });
+        }
+
+        for (let i = 0; i < 5; i++) {
+            queue.enqueue(i);
+        }
+
+        await queue.listenersDone;
+
+        expect(testValues).toEqual([0,1,2,3,4])
+    });
+})
+import { Request, Response } from "express";
+
+import { NotFoundError } from "../errors/NotFoundError";
+
+import { Collection } from "../models/Collection";
+import { CollectionItem } from "../models/CollectionItem";
+
+import { fetchStory } from "../util/functions/fetchStory";
+
+export const postStory = async (req: Request, res: Response) => {
+    const { collectionName } = req.params;
+    let storyId = parseInt(req.params.storyId);
+    const userNick = req.decodedJwt!.nick;
+    
+    // Find collection
+    const collection = await Collection.findOne({
+        where: { name: collectionName, userNick }
+    });
+    if (!collection) throw new NotFoundError();
+
+    // Fetch and process item & nested items
+    await fetchStory(storyId, collection.collectionId);
+
+    res.sendStatus(201);
+}
+
+export const deleteStory = async (req: Request, res: Response) => {
+    const { collectionName, storyId } = req.params;
+    const userNick = req.decodedJwt!.nick;
+
+    // Retrieve collection
+    const collection = await Collection.findOne({
+        where: { name: collectionName, userNick }
+    });
+    if (!collection) throw new NotFoundError();
+
+    // Destroy associations
+    const destroyedCount = await CollectionItem.destroy({
+        where: {
+            collectionId: collection.collectionId,
+            itemId: storyId
+        }
+    });
+    if (!destroyedCount) throw new NotFoundError();
+
+    res.sendStatus(200);
+}
+import { NextFunction, Request, Response } from "express";
+
+import { elastic } from '../elastic';
+
+export const getSearch = async (req: Request, res: Response, next: NextFunction) => {
+    const { q } = req.query as { q: string };
+
+    // Search for matching items
+    const data = await elastic.searchItem(q);
+
+    res.send(data);
+}
+import { NextFunction, Request, Response } from "express";
+
+import { CustomError } from "../errors/CustomError";
+import { CustomErrorMessage } from "../types/errors";
+import { Logger } from "../util/classes/Logger";
+
+// Handle 404 case
+export const notFoundHandler = (req: Request, res: Response) => {
+    res.sendStatus(404);
+};
+
+// Handle other errors
+export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
+    // Handle expected custom errors
+    if (err instanceof CustomError) {
+        return res.status(err.statusCode).send({
+            errors: err.serializeErrors()
+        });
+    }
+    
+    // Handle unexpected errors
+    Logger.error({
+        location: 'Express error handler',
+        error: err,
+        info: `${req.method}: ${req.originalUrl}`
+    });
+
+    // Create an error message in consistent format
+    const errorMessage: CustomErrorMessage[] = [{
+        message: 'Unexpected error'
+    }];
+
+    res.status(500).send({
+        errors: errorMessage,
+    });
+    
+};
+import { Request, Response } from "express";
+import { QueryTypes } from "sequelize";
+
+import { sequelize } from "../sequelize";
+
+import { SourceExistsError } from "../errors/SourceExistsError";
+import { NotFoundError } from "../errors/NotFoundError";
+
+import { Collection } from "../models/Collection";
+import { CollectionItem } from "../models/CollectionItem";
+
+import { ItemWithParentId } from "../types/models/item";
+import { SentCollection } from "../types/models/collection";
+
+import { arrayToTree } from "../util/functions/arrayToTree";
+
+export const postCollection = async (req: Request, res: Response) => {
+    const { name }: { name: string } = req.body;
+    const userNick = req.decodedJwt!.nick;
+
+    // Check for collection with the same name
+    // belonging to the current user
+    const existingCollection = await Collection.findOne({
+        where: {
+            name: name, userNick
+        }
+    });
+    if (existingCollection) throw new SourceExistsError();
+
+    // Create new collection
+    await Collection.create({ name, userNick });
+
+    res.sendStatus(201);
+}
+
+export const getCollection = async (req: Request, res: Response) => {
+    const { collectionName } = req.params;
+    const userNick = req.decodedJwt!.nick;
+
+    // Retrieve collection
+    const collection = await Collection.findOne({
+        where: { name: collectionName, userNick }
+    });
+    if (!collection) throw new NotFoundError();
+
+    // Create data object to be sent
+    const data: SentCollection = {
+        name: collection.name,
+        stories: []
+    }
+
+    // Retrieve items
+    const items = await sequelize.query<ItemWithParentId>(`
+        WITH RECURSIVE
+        itemsWithParentIdInCollection AS (
+            -- Select all items in a collection and append their parentId
+            SELECT i1.*, ih1.parentId FROM (
+                SELECT i.* FROM items i
+                    JOIN collectionItems ci ON ci.itemId = i.itemId
+                    WHERE ci.collectionId = ${collection.collectionId} ) i1
+                JOIN itemHierarchies ih1 ON ih1.itemId = i1.itemId
+        ), tree AS (
+            -- Select top-level items for a given collection
+            SELECT * FROM itemsWithParentIdInCollection
+                WHERE parentId IS NULL
+            UNION ALL
+            -- Recursively select items with already selected items as parents
+            SELECT i2.* FROM itemsWithParentIdInCollection i2
+                JOIN tree t ON t.itemId = i2.parentId
+        )
+        SELECT
+            itemId, deleted, type, 'by', time, text,
+            dead, url, score, title, descendants, parentId
+        FROM tree;
+    `, { type: QueryTypes.SELECT });
+
+    // Create item tree
+    data.stories = arrayToTree(items);
+
+    res.send(data);
+}
+
+export const deleteCollection = async (req: Request, res: Response) => {
+    const { collectionName } = req.params;
+    const userNick = req.decodedJwt!.nick;
+    
+    // Retrieve collection
+    const collection = await Collection.findOne({
+        where: { name: collectionName, userNick }
+    });
+    if (!collection) throw new NotFoundError();
+
+    // Destroy associations
+    await CollectionItem.destroy({
+        where: { collectionId: collection.collectionId }
+    });
+
+    // Destroy collection
+    await collection.destroy();
+
+    res.sendStatus(200);
+}
+import { Request, Response } from "express";
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+
+import { SourceExistsError } from "../errors/SourceExistsError";
+import { InvalidCredentialsError } from "../errors/InvalidCredentialsError";
+
+import { User } from "../models/User";
+
+export const postNewUser = async (req: Request, res: Response) => {
+    const { nick: userNick, password }: {
+        nick: string,
+        password: string
+    } = req.body;
+
+    // Check for existing user with the same nick
+    const sameNickUser = await User.findByPk(userNick);
+    if (sameNickUser) throw new SourceExistsError();
+
+    // Hash password
+    const salt = await bcrypt.genSalt();
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Build and save the user
+    await User.create({
+        userNick: userNick,
+        password: hashedPassword
+    });
+
+    res.sendStatus(201);
+}
+
+export const postLogin = async (req: Request, res: Response) => {
+    const { nick, password }: {
+        nick: string,
+        password: string
+    } = req.body;
+
+    // Fetch user by nick
+    const user = await User.findByPk(nick);
+    if (!user) throw new InvalidCredentialsError();
+
+    // Compare passwords
+    const doesPasswordMatch = await bcrypt.compare(password, user.password);
+    if (!doesPasswordMatch) throw new InvalidCredentialsError();
+
+    // Create JWT
+    const token = jwt.sign({ nick }, process.env.TOKEN_KEY!, {
+        expiresIn: '2h'
+    });
+
+    res.status(200).send({ jwt: token });
+}
+import supertest from "supertest";
+import fetch from "node-fetch";
+
+import { app } from "../../app";
+
+import { CollectionItem } from "../../models/CollectionItem";
+import { Item } from "../../models/Item";
+import { FetchedItem } from "../../types/models/item";
+
+import { getJwt } from "./util/getJwt";
+import { createCollection } from "./util/createCollection";
+import { Clear } from "./util/Clear";
+
+describe('Story routes', () => {
+    beforeEach(async () => {
+        await Clear.clearDB();
+        await Clear.clearMocks();
+    });
+    
+    describe('POST /collection/:collectionName/:storyId', () => {
+        it('sends 400 on invalid data', async () => {
+            const token = await getJwt();
+            const collectionName = await createCollection(token);
+    
+            const res = await supertest(app)
+                .post(`/collection/${collectionName}/abc`)
+                .send({ token })
+                .expect(400)
+    
+            expect(res.body.errors.length).toEqual(1);
+        });
+    
+        it('sends 404 on non-existent collection', async () => {
+            const token = await getJwt();
+    
+            await supertest(app)
+                .post(`/collection/abc/123`)
+                .send({ token })
+                .expect(404)
+        });
+    
+        it('sends 404 on non-existent story', async () => {
+            const token = await getJwt();
+            const collectionName = await createCollection(token);
+    
+            // @ts-ignore
+            fetch.mockResolvedValue(null);
+    
+            await supertest(app)
+                .post(`/collection/${collectionName}/100`)
+                .send({ token })
+                .expect(404)
+        });
+    
+        it('sends 422 on unprocessable item type', async () => {
+            const token = await getJwt();
+            const collectionName = await createCollection(token);
+    
+            // @ts-ignore
+            fetch.mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    id: 120,
+                    type: 'job',
+                    time: 123456789
+                })
+            });
+    
+            await supertest(app)
+                .post(`/collection/${collectionName}/120`)
+                .send({ token })
+                .expect(422)
+        });
+    
+        it('sends 201 on successful adition', async () => {
+            const token = await getJwt();
+            const collectionName = await createCollection(token);
+    
+            // @ts-ignore
+            fetch.mockImplementation(async (url: string) => {
+                let jsonFcn:
+                    () => Promise<FetchedItem|null> = async () => null;
+                if (url.includes('123')) {
+                    jsonFcn = async () => ({
+                        id: 123,
+                        type: 'story',
+                        time: 123456789,
+                        kids: [ 124 ]
+                    });
+                } else if (url.includes('124')) {
+                    jsonFcn = async () => ({
+                        id: 124,
+                        type: 'comment',
+                        time: 123456789,
+                        parent: 123
+                    });
+                }
+                return {
+                    ok: true,
+                    json: jsonFcn
+                }
+            });
+    
+            await supertest(app)
+                .post(`/collection/${collectionName}/123`)
+                .send({ token })
+                .expect(201)
+    
+            const collectionItemsCount = await CollectionItem.count();
+            expect(collectionItemsCount).toEqual(2);
+    
+            const itemCount = await Item.count();
+            expect(itemCount).toEqual(2);
+    
+            expect(fetch).toHaveBeenCalledTimes(2);
+        });
+    });
+    
+    
+    describe('DELETE /collection/:collectionName/:storyId', () => {
+        it('sends 400 on invalid data', async () => {
+            const token = await getJwt();
+            const collectionName = await createCollection(token);
+    
+            await supertest(app)
+                .delete(`/collection/${collectionName}/abc`)
+                .send({ token })
+                .expect(400);
+        });
+    
+        it('sends 404 on non-existent collection', async () => {
+            const token = await getJwt();
+    
+            await supertest(app)
+                .delete(`/collection/nothing/123`)
+                .send({ token })
+                .expect(404);
+        });
+    
+        it('sends 404 on non-existent story', async () => {
+            const token = await getJwt();
+            const collectionName = await createCollection(token);
+    
+            await supertest(app)
+                .delete(`/collection/${collectionName}/123`)
+                .send({ token })
+                .expect(404);
+        });
+    
+        it('sends 200 on successful deletion', async () => {
+            const token = await getJwt();
+            const collectionName = await createCollection(token);
+    
+            // @ts-ignore
+            fetch.mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    id: 123,
+                    type: 'story',
+                    time: 123456789
+                })
+            });
+    
+            await supertest(app)
+                .post(`/collection/${collectionName}/123`)
+                .send({ token })
+                .expect(201)
+    
+            let collectionItemsCount = await CollectionItem.count();
+            expect(collectionItemsCount).toEqual(1);
+    
+            await supertest(app)
+                .delete(`/collection/${collectionName}/123`)
+                .send({ token })
+                .expect(200);
+    
+            collectionItemsCount = await CollectionItem.count();
+            expect(collectionItemsCount).toEqual(0);
+        });
+    });
+});
+import supertest from "supertest";
+
+import { app } from "../../app";
+
+import { Clear } from "./util/Clear";
+import { createCollection } from "./util/createCollection";
+import { getJwt } from "./util/getJwt";
+
+import { saveStory } from "./util/saveStory";
+
+describe('GET /search', () => {
+    beforeEach(async () => {
+        await Clear.clearDB();
+        await Clear.clearMocks();
+        await Clear.clearElastic();
+    });
+
+    it('sends search results', async () => {
+        const token = await getJwt();
+        const collectionName = await createCollection(token);
+        await saveStory(token, collectionName);
+        await saveStory(token, collectionName);
+
+        const { body } = await supertest(app)
+            .get(`/search?q="story"`)
+            .send()
+            .expect(200)
+
+        expect(body.length).toEqual(1);
+    });
+});
+import supertest from 'supertest';
+import fetch from 'node-fetch';
+
+import { app } from '../../app';
+
+import { Collection } from '../../models/Collection';
+import { CollectionItem } from '../../models/CollectionItem';
+
+import { FetchedItem } from '../../types/models/item';
+
+import { getJwt } from './util/getJwt';
+import { createCollection } from './util/createCollection';
+import { Clear } from './util/Clear';
+
+describe('Collection routes', () => {
+    beforeEach(async () => {
+        await Clear.clearDB();
+        await Clear.clearMocks();
+    });
+    
+    describe('POST /collection', () => {
+        it('sends 400 on invalid data', async () => {
+            const token = await getJwt();
+    
+            const res = await supertest(app)
+                .post('/collection')
+                .send({
+                    name: '',
+                    token
+                })
+                .expect(400)
+    
+            expect(res.body.errors.length).toEqual(1);
+        });
+    
+        it('sends 400 on empty data', async () => {
+            const token = await getJwt();
+    
+            const res = await supertest(app)
+                .post('/collection')
+                .send({ token })
+                .expect(400)
+    
+            expect(res.body.errors.length).toEqual(1);
+        });
+    
+        it('sends 401 on missing jwt', async () => {
+            await supertest(app)
+                .post('/collection')
+                .send()
+                .expect(401)
+        });
+    
+        it('sends 409 on collection name collision', async () => {
+            const token = await getJwt();
+    
+            await supertest(app)
+                .post('/collection')
+                .send({
+                    name: 'MyCollection', token
+                })
+                .expect(201)
+    
+            await supertest(app)
+                .post('/collection')
+                .send({
+                    name: 'MyCollection', token
+                })
+                .expect(409)
+        });
+    
+        it('sends 201 on successful collection creation', async () => {
+            const token = await getJwt();
+    
+            await supertest(app)
+                .post('/collection')
+                .send({
+                    name: 'MyCollection', token
+                })
+                .expect(201)
+    
+            const collCount = await Collection.count();
+            expect(collCount).toEqual(1);
+        });
+    
+        it('sends 201 on successful collection creation and does not interfere with other user\'s collections', async () => {
+            const token1 = await getJwt('User1');
+            await supertest(app)
+                .post('/collection')
+                .send({
+                    name: 'MyCollection', token: token1
+                })
+                .expect(201)
+    
+            const token2 = await getJwt('User2');
+            await supertest(app)
+                .post('/collection')
+                .send({
+                    name: 'MyCollection', token: token2
+                })
+                .expect(201)
+    
+            const collCount = await Collection.count();
+            expect(collCount).toEqual(2);
+        });
+    });
+    
+    
+    describe('GET /collection/:collectionName', () => {
+        it('sends 404 on non-existent collection', async () => {
+            const token = await getJwt();
+    
+            await supertest(app)
+                .get(`/collection/abc`)
+                .send({ token })
+                .expect(404)
+        });
+        
+        it('sends 200 and collection', async () => {
+            const token = await getJwt();
+            const collectionName = await createCollection(token);
+    
+            // @ts-ignore
+            fetch.mockImplementation(async (url: string) => {
+                let jsonFcn:
+                    () => Promise<FetchedItem|null> = async () => null;
+                if (url.includes('123')) {
+                    jsonFcn = async () => ({
+                        id: 123,
+                        type: 'story',
+                        time: 123456789,
+                        kids: [ 124 ]
+                    });
+                } else if (url.includes('124')) {
+                    jsonFcn = async () => ({
+                        id: 124,
+                        type: 'comment',
+                        time: 123456789,
+                        parent: 123
+                    });
+                }
+                return {
+                    ok: true,
+                    json: jsonFcn
+                }
+            });
+    
+            await supertest(app)
+                .post(`/collection/${collectionName}/123`)
+                .send({ token })
+                .expect(201)
+    
+            const { body } = await supertest(app)
+                .get(`/collection/${collectionName}`)
+                .send({ token })
+                .expect(200)
+    
+            expect(body.name).toEqual(collectionName);
+            expect(body.stories).toHaveLength(1);
+            expect(body.stories[0].kids).toHaveLength(1);
+        });
+    });
+    
+    
+    describe('DELETE /collection/:collectionName', () => {
+        it('sends 404 on non-existent collection', async () => {
+            const token = await getJwt();
+    
+            await supertest(app)
+                .delete(`/collection/abc`)
+                .send({ token })
+                .expect(404)
+        });
+        
+        it('sends 200 on successful deletion', async () => {
+            const token = await getJwt();
+            const collectionName = await createCollection(token);
+    
+            await supertest(app)
+                .delete(`/collection/${collectionName}`)
+                .send({ token })
+                .expect(200)
+    
+            const collCount = await Collection.count();
+            expect(collCount).toEqual(0);
+
+            const collItemsCount = await CollectionItem.count();
+            expect(collItemsCount).toEqual(0);
+        });
+    });
+});
+import supertest from 'supertest';
+import jwt from 'jsonwebtoken';
+
+import { app } from '../../app';
+import { User } from '../../models/User';
+
+import { Clear } from './util/Clear';
+
+import { DecodedJwt } from '../../types/misc';
+
+describe('Authentication routes', () => {
+    beforeEach(async () => {
+        await Clear.clearDB();
+        await Clear.clearMocks();
+    });
+
+    describe('POST /auth', () => {
+
+        it('sends 400 on invalid data', async () => {
+            const res = await supertest(app)
+                .post('/auth')
+                .send({
+                    nick: '',
+                    password: 123
+                })
+                .expect(400)
+    
+            expect(res.body.errors.length).toEqual(2);
+    
+            const userCount = await User.count();
+            expect(userCount).toEqual(0);
+        });
+        
+        it('sends 400 on empty data', async () => {
+            const res = await supertest(app)
+                .post('/auth')
+                .send()
+                .expect(400)
+    
+            expect(res.body.errors.length).toEqual(3);
+    
+            const userCount = await User.count();
+            expect(userCount).toEqual(0);
+        });
+    
+        it('sends 409 if nick is taken', async () => {
+            await supertest(app)
+                .post('/auth')
+                .send({
+                    nick: 'MyCoolNick',
+                    password: 'MyDarkSecret'
+                })
+                .expect(201)
+    
+            await supertest(app)
+                .post('/auth')
+                .send({
+                    nick: 'MyCoolNick',
+                    password: 'MyDarkSecret'
+                })
+                .expect(409)
+    
+            const userCount = await User.count();
+            expect(userCount).toEqual(1);
+        });
+    
+        it('sends 201 and creates new user', async () => {
+            await supertest(app)
+                .post('/auth')
+                .send({
+                    nick: 'MyCoolNick',
+                    password: 'MyDarkSecret'
+                })
+                .expect(201)
+    
+            const userCount = await User.count();
+            expect(userCount).toEqual(1);
+        });
+    });
+    
+    describe('POST /auth/login', () => {
+        it('sends 400 on invalid data', async () => {
+            const res = await supertest(app)
+                .post('/auth/login')
+                .send({
+                    nick: '',
+                    password: 123
+                })
+                .expect(400)
+    
+            expect(res.body.errors.length).toEqual(2);
+        });
+        
+        it('sends 400 on empty data', async () => {
+            const res = await supertest(app)
+                .post('/auth/login')
+                .send()
+                .expect(400)
+    
+            expect(res.body.errors.length).toEqual(3);
+        });
+        
+        it('sends 401 on invalid credentials', async () => {
+            await supertest(app)
+                .post('/auth/login')
+                .send({
+                    nick: 'MyCoolNick',
+                    password: 'MyDarkSecret'
+                })
+                .expect(401)
+        });
+        
+        it('sends 200 and JWT', async () => {
+            await supertest(app)
+                .post('/auth')
+                .send({
+                    nick: 'MyCoolNick',
+                    password: 'MyDarkSecret'
+                })
+                .expect(201)
+    
+            const { body } = await supertest(app)
+                .post('/auth/login')
+                .send({
+                    nick: 'MyCoolNick',
+                    password: 'MyDarkSecret'
+                })
+                .expect(200)
+    
+            const decoded = jwt.verify(body.jwt, process.env.TOKEN_KEY!) as DecodedJwt;
+            expect(decoded.nick).toEqual('MyCoolNick');
+        });
+    });
+})
+import fetch from "node-fetch";
+import supertest from "supertest";
+
+import { app } from "../../../app";
+
+import { FetchedItem } from "../../../types/models/item";
+
+const saveStory = async (token: string, collectionName: string) => {
+    // @ts-ignore
+    fetch.mockImplementation(async (url: string) => {
+        let jsonFcn:
+            () => Promise<FetchedItem|null> = async () => null;
+        if (url.includes('123')) {
+            jsonFcn = async () => ({
+                id: 123,
+                type: 'story',
+                time: 123456789,
+                kids: [ 124 ]
+            });
+        } else if (url.includes('124')) {
+            jsonFcn = async () => ({
+                id: 124,
+                type: 'comment',
+                time: 123456789,
+                parent: 123
+            });
+        }
+        return {
+            ok: true,
+            json: jsonFcn
+        }
+    });
+    
+    await supertest(app)
+        .post(`/collection/${collectionName}/123`)
+        .send({ token })
+        .expect(201)
+}
+
+export { saveStory };
+import supertest from "supertest";
+
+import { app } from "../../../app";
+
+export const getJwt = async (nick: string = 'MyCoolNick') => {
+    await supertest(app)
+        .post('/auth')
+        .send({
+            nick: nick,
+            password: 'MyDarkSecret'
+        })
+        .expect(201)
+
+    const { body } = await supertest(app)
+        .post('/auth/login')
+        .send({
+            nick: nick,
+            password: 'MyDarkSecret'
+        })
+        .expect(200)
+
+    return body.jwt;
+}
+import supertest from "supertest";
+
+import { app } from "../../../app";
+
+export const createCollection = async (
+    jwt: string, collectionName: string = 'MyCollection'
+) => {
+    await supertest(app)
+        .post('/collection')
+        .send({
+            name: collectionName,
+            token: jwt
+        })
+        .expect(201)
+
+    return collectionName;
+}
+import { sequelize } from "../../../sequelize";
+import { elastic } from "../../../elastic";
+
+import { Collection } from "../../../models/Collection";
+import { CollectionItem } from "../../../models/CollectionItem";
+import { Item } from "../../../models/Item";
+import { ItemHierarchy } from "../../../models/ItemHierarchy";
+import { User } from "../../../models/User";
+
+class Clear {
+    static async clearDB() {
+        await ItemHierarchy.drop();
+        await CollectionItem.drop();
+        await Item.drop();
+        await Collection.drop();
+        await User.drop();
+        await sequelize.sync({ force: true });
+    }
+
+    static async clearElastic() {
+        await elastic.initIndexAndMapping(true);
+    }
+
+    static async clearMocks() {
+        jest.clearAllMocks();
+    }
+}
+
+export { Clear };
+node_modules
+package-lock.json
+FROM node:14.15.3-alpine
+
+WORKDIR /usr/src/app
+
+RUN npm install -g typescript \
+    && npm install -g concurrently
+
+COPY package.json ./
+RUN npm i
+
+COPY ./ ./
+
+EXPOSE 8080
+
+CMD npm start
+{
+    "watch": ["src"],
+    "ext": ".ts,.js",
+    "ignore": [],
+    "env": {
+        "TOKEN_KEY": "YouWontGuessIt"
+    }
+}
+documents
+node_modules
+build
+version: "3.9"
+services:
+  mysqldb:
+    image: mysql:8
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=123456
+      - MYSQL_DATABASE=smlk
+    networks:
+      - esnet
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+  app:
+    depends_on:
+      - mysqldb
+      - elasticsearch
+    build: ./app
+    restart: unless-stopped
+    command: npm test
+    volumes:
+      - ./app:/usr/src/app
+      - /usr/src/app/node_modules
+    ports:
+      - 8081:8081
+    links:
+      - mysqldb
+      - elasticsearch
+    networks:
+      - esnet
+    environment:
+      - NODE_ENV=test
+      - PORT=8081
+      - DB_NAME=smlk
+      - DB_HOST=mysqldb
+      - DB_USER=root
+      - DB_PASSWORD=123456
+      - ELASTIC_URL=http://elasticsearch:9200
+      - ELASTIC_HOST=elasticsearch
+    stdin_open: true
+    tty: true
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.0.1
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    environment:
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - discovery.type=single-node
+    logging:
+      driver: none
+    networks: 
+      - esnet
+volumes:
+  esdata:
+networks:
+  esnet:
+  version: "3.9"
+services:
+  mysqldb:
+    image: mysql:8
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=123456
+      - MYSQL_DATABASE=smlk
+    networks:
+      - esnet
+    ports:
+      - 3307:3307
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+  app:
+    depends_on:
+      - mysqldb
+      - elasticsearch
+    build: ./app
+    restart: unless-stopped
+    command: npm start
+    volumes:
+      - ./app:/usr/src/app
+      - /usr/src/app/node_modules
+    ports:
+      - 8080:8080
+    links:
+      - mysqldb
+      - elasticsearch
+    networks:
+      - esnet
+    environment:
+      - NODE_ENV=prod
+      - PORT=8080
+      - DB_NAME=smlk
+      - DB_HOST=mysqldb
+      - DB_USER=root
+      - DB_PASSWORD=123456
+      - ELASTIC_URL=http://elasticsearch:9200
+      - ELASTIC_HOST=elasticsearch
+    stdin_open: true
+    tty: true
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.0.1
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    environment:
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - discovery.type=single-node
+    logging:
+      driver: none
+    ports:
+      - 9200:9200
+    networks: 
+      - esnet
+volumes:
+  esdata:
+networks:
+  esnet:
+  CREATE DATABASE IF NOT EXISTS smlk;
+  Mazat itemy, které se už nikde nepoužívají
+
+Odesílat i přijímat property token (teď se odesílá jwt a přijímá token)
+
+Nepoužívat @ts-ignore v testech, jenže jest je nejspíš rozbitej
+
+Nechtít posílat token na body v GET requestu, ale třeba jako header
+
+Využít cursor při pravidelném updatování itemů
+
+Nevkládat citlivá data přímo do docker-compose.yml
+
+Počkat na úplné nastartování MySQL databáze, aby nespadl server
+# Prerequisites
+
+Install docker and docker-compose.
+
+# Running the API & info
+
+The API can be run in development mode by executing *docker-compose -p dev -f docker-compose.yml up*, tests can be run simultaneously with *docker-compose -p test -f docker-compose.test.yml up*.
+
+**After running *docker-compose up*** MySQL may not be ready for a connection and therefore you will need to restart the process in *app* container. Simply saving a file in *src* directory should work, otherwise run *docker-compose restart app*.
+
+API exposes port **8080**.
+
+Needed changes if this should be a production project are listed in file **inproduction.txt**.
+
+*Little note*: For testing purposes, I liked to use these stories: 123 & 28975856. Just so you don't have to look other ids up :)
+
+# Routes documentation
+
+All the routes send *Content-Type: application/json* header. Potential error messages are sent in the following format:  
+`{ errors: { message: string; field?: string; }[] }`
+
+- **/auth**
+    - **POST /auth**  
+        *Creates new user*
+        1. Expects:
+            - nick: non-empty string of at most 20 characters
+            - password: string of at least 5 characters
+        2. Sends:
+            - 400 on invalid data
+            - 409 on nick collision
+            - 201 on successful user creation
+    - **POST /auth/login**  
+        *Sends JWT expiring in 2h*
+        1. Expects:
+            - nick: non-empty string of at most 20 characters
+            - password: string of at least 5 characters
+        2. Sends:
+            - 400 on invalid data
+            - 401 on invalid credentials
+            - 200 and { jwt: *your_jwt* } on successful login
+- **/collection**  
+    All /collection routes expect a JWT sent as a *token* property on body. If the JWT is invalid or expired, expect 401.
+    - **POST /collection**  
+        *Creates new collection*
+        1. Expects:
+            - name: non-empty string of at most 20 characters
+        2. Sends:
+            - 400 on invalid data
+            - 409 on collection name collision
+            - 201 on successful collection creation
+    - **GET /collection/<collection_name>**  
+        *Sends a collection and its contents*
+        1. Sends:
+            - 404 on non-existent collection
+            - 200 and collection object `{ name: string; stories: { ...storyprops; kids: { kid info with nested kids }[] }[] }`
+    - **DELETE /collection/<collection_name>**  
+        *Deletes a collection*
+        1. Sends:
+            - 404 on non-existent collection
+            - 200 on successful deletion
+    - **POST /collection/<collection_name>/<story_id>**  
+        *Adds new HackerNews story into a collection*
+        1. Sends:
+            - 400 on invalid data
+            - 404 on non-existent collection
+            - 404 on non-existent story
+            - 422 on unprocessable item type
+            - 201 on successful addition
+            - *Non-existent and/or unprocessable kid items are ignored*
+    - **DELETE /collection/<collection_name>/<story_id: number>**  
+        *Removes a story from collection*
+        1. Sends:
+            - 400 on invalid data
+            - 404 on non-existent collection
+            - 404 on non-existent story
+            - 200 on successful deletion
+- **/search?q=<your_query>**  
+    *Sends search results*
+    1. Sends:
+        - 400 on invalid data
+        - 200 and array of elasticsearch records on successful search
