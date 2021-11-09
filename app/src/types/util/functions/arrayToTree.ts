@@ -3,6 +3,6 @@ export interface WithIds {
     itemId: string|number;
 }
 
-export interface WithKids<T> {
+export type WithKids<T> = T & {
     kids: T[];
 }

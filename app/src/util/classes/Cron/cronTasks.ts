@@ -6,6 +6,7 @@ import { ItemTypesEnum } from "../../../types/models/item";
 
 import { Logger } from "../Logger";
 
+// Refetches all stories in database
 export const updateItems = async () => {
     Logger.log({
         location: 'Cron updateItems',
