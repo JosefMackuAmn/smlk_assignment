@@ -1,4 +1,7 @@
-import { PromiseResolveRejectFunction } from "../types/misc";
+import { 
+    OnEnqueueFunction,
+    PromiseResolveRejectFunction
+} from '../types/datastructures/queue';
 
 class QueueNode<T> {
     constructor(
@@ -13,7 +16,7 @@ class Queue<T> {
     public length = 0;
 
     // Private function executed on enqueue
-    private _onEnqueue: (() => void)|null = null;
+    private _onEnqueue: OnEnqueueFunction = null;
 
     // Variables needed to resolve listenersDone
     private runningListeners = 0;
@@ -26,7 +29,7 @@ class Queue<T> {
     public listenersDone: Promise<boolean> = Promise.resolve(true);
 
     // Setter for a function executed on enqueue
-    set onEnqueue(cb: (() => any)|null) {
+    set onEnqueue(cb: OnEnqueueFunction) {
         if (cb) {
             // Create a wrapper around provided cb
             // resolving listenersDone when no more
@@ -54,8 +57,7 @@ class Queue<T> {
                         this.resolveListenersDoneHook(true);
                     }
                     this.resolveListenersDoneHook = null;
-                    this.rejectListenersDoneHook = null;
-                    
+                    this.rejectListenersDoneHook = null;                    
                 }
             };
         } else {

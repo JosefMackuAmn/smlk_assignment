@@ -3,8 +3,9 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 import { SourceExistsError } from "../errors/SourceExistsError";
-import { User } from "../models/User";
 import { InvalidCredentialsError } from "../errors/InvalidCredentialsError";
+
+import { User } from "../models/User";
 
 export const postNewUser = async (req: Request, res: Response) => {
     const { nick: userNick, password }: {

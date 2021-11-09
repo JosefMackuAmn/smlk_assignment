@@ -1,5 +1,6 @@
 import { WithIds, WithKids } from "../../types/util/functions/arrayToTree";
 
+// Converts a flat array into an array of trees
 const arrayToTree = <T extends WithIds>(array: T[]) => {
     // Variable containing itemId as a key and an item as a value
     const map: { [key: string|number]: T & WithKids<T> } = {};

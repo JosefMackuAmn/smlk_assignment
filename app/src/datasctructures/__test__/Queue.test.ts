@@ -127,7 +127,7 @@ describe('class Queue', () => {
                     if (value!==null) {
                         testValues.push(value);
                     }
-                    resolve(true);
+                    resolve();
                 }, 20);
             });
         }
@@ -153,7 +153,7 @@ describe('class Queue', () => {
                     if (value!==null) {
                         testValues.push(value);
                     }
-                    resolve(true);
+                    resolve();
                 }, 20);
             });
         }

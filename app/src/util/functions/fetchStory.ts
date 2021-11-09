@@ -103,35 +103,26 @@ const fetchStory = async (itemId: number, collectionId?: number) => {
                 transaction: transaction
             });
         
-            // Try to save the item into the es
-            try {
-                const itemInElastic = await elastic.getItemById(item.itemId);
-                if (itemInElastic) {
-                    // Update if item exists
-                    await elastic.updateItem(itemInElastic.id, {
-                        itemId: item.itemId,
-                        type: item.type,
-                        text: item.text || '',
-                        author: item.by || '',
-                        title: item.title || ''
-                    });
-                } else {
-                    // Add item if doesn't exist
-                    await elastic.addItem({
-                        itemId: item.itemId,
-                        type: item.type,
-                        text: item.text || '',
-                        author: item.by || '',
-                        title: item.title || ''
-                    });
-                }
-            } catch (err) {
-                Logger.error({
-                    location: 'fetchStory function',
-                    error: err,
-                    info: `Couldn't save item ${item.itemId} into elasticsearch`
+            // Save the item into the elasticsearch
+            const itemInElastic = await elastic.getItemById(item.itemId);
+            if (itemInElastic) {
+                // Update item if exists
+                await elastic.updateItem(itemInElastic.id, {
+                    itemId: item.itemId,
+                    type: item.type,
+                    text: item.text || '',
+                    author: item.by || '',
+                    title: item.title || ''
                 });
-                throw err;
+            } else {
+                // Add item if doesn't exist
+                await elastic.addItem({
+                    itemId: item.itemId,
+                    type: item.type,
+                    text: item.text || '',
+                    author: item.by || '',
+                    title: item.title || ''
+                });
             }
         
             // Enqueue kid elements for fetching
