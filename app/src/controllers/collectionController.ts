@@ -53,7 +53,7 @@ export const getCollection = async (req: Request, res: Response) => {
     const items = await sequelize.query<ItemWithParentId>(`
         WITH RECURSIVE
         itemsWithParentIdInCollection AS (
-            -- Select all items in collection and append their parentId
+            -- Select all items in a collection and append their parentId
             SELECT i1.*, ih1.parentId FROM (
                 SELECT i.* FROM items i
                     JOIN collectionItems ci ON ci.itemId = i.itemId
