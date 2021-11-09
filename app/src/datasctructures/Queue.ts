@@ -31,7 +31,7 @@ class Queue<T> {
     // Setter for a function executed on enqueue
     set onEnqueue(cb: OnEnqueueFunction) {
         if (cb) {
-            // Create a wrapper around provided cb
+            // Create a wrapper around a provided cb
             // resolving listenersDone when no more
             // listeners are running
             this._onEnqueue = async () => {
