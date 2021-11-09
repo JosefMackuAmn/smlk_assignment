@@ -6,9 +6,9 @@ import { ItemTypesEnum } from "../../../types/models/item";
 
 import { Logger } from "../Logger";
 
-export const updateDatabase = async () => {
+export const updateItems = async () => {
     Logger.log({
-        location: 'Cron updateDatabase',
+        location: 'Cron updateItems',
         info: 'Synchornizing items...'
     });
 
@@ -23,7 +23,7 @@ export const updateDatabase = async () => {
             await fetchStory(story.itemId);
         } catch (err) {
             Logger.error({
-                location: 'Cron updateDatabase',
+                location: 'Cron updateItems',
                 error: err,
                 info: `Couldn't fetch story ${
                     story.itemId} during scheduled update`
@@ -32,7 +32,7 @@ export const updateDatabase = async () => {
     }
 
     Logger.log({
-        location: 'Cron updateDatabase',
+        location: 'Cron updateItems',
         info:'Items synchronized!'
     });
 }
