@@ -6,9 +6,12 @@ export interface CollectionItemAttrs {
     itemId: number;
 }
 
-export interface CollectionItemCreationAttrs extends Optional<CollectionItemAttrs, 'collectionItemId'> {};
+export interface CollectionItemCreationAttrs
+    extends Optional<CollectionItemAttrs, 'collectionItemId'> {};
 
-export interface CollectionItemInstance extends Model<CollectionItemAttrs, CollectionItemCreationAttrs>, CollectionItemAttrs {
+export interface CollectionItemInstance extends Model<
+    CollectionItemAttrs, CollectionItemCreationAttrs
+>, CollectionItemAttrs {
     createdAt: Date;
     updatedAt: Date;
 };

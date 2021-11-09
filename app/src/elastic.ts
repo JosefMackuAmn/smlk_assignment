@@ -1,11 +1,12 @@
 import { Client } from "@elastic/elasticsearch";
-import { SearchResponse } from "@elastic/elasticsearch/api/types";
+import { SearchHitsMetadata, SearchResponse } from "@elastic/elasticsearch/api/types";
 
-import { ESItem } from "./types/elasticsearch";
+import { CheckConnectionOptions, ESItem } from "./types/elastic";
+import { Logger } from "./util/classes/Logger";
 
 class Elastic {
-    public readonly ES_INDEX = 'items';
-    public readonly ES_TYPE = 'item';
+    public readonly ES_INDEX_NAME = 'items';
+    public readonly ES_MAPPING_TYPE_NAME = 'item';
 
     private _esclient;
 
@@ -13,12 +14,14 @@ class Elastic {
         this._esclient = new Client({ node: url });
     }
 
+    // Getter for esclient
     get esclient() {
         return this._esclient;
     }
 
     // Resolves on establishing connection to elasticsearch
-    async checkConnection() {
+    // and conditionally creates an index and a mapping
+    async checkConnection({ init = false, force = false }: CheckConnectionOptions) {
         let connected = false;
     
         while (!connected) {
@@ -28,17 +31,41 @@ class Elastic {
             } catch (err) {}
         }
 
+        if (init) await this.initIndexAndMapping(force);
+
         return true;
+    }
+
+    // Initialize index and mapping
+    async initIndexAndMapping(force: boolean = false) {
+        const elasticIndex = await this._esclient.indices.exists({
+            index: this.ES_INDEX_NAME
+        });
+
+        if (!elasticIndex) {
+            await this.createIndex();
+            await this.setItemMapping();
+        } else if (force) {
+            await this._esclient.indices.delete({ index: this.ES_INDEX_NAME });
+            await this.createIndex();
+            await this.setItemMapping();
+        }
     }
 
     // Creates index
     async createIndex() {
         try {
-          await this._esclient.indices.create({ index: this.ES_INDEX });
-          console.log(`Created index ${this.ES_INDEX}`);
+            await this._esclient.indices.create({ index: this.ES_INDEX_NAME });
+            Logger.log({
+                location: Elastic.name,
+                info: `Created index ${this.ES_INDEX_NAME}`
+            });
         } catch (err) {
-          console.error(`An error occurred while creating the index ${this.ES_INDEX}`);
-          console.error(err);
+            Logger.error({
+                error: err,
+                location: Elastic.name,
+                info: `An error occurred while creating the index ${this.ES_INDEX_NAME}`
+            });
         }
     }
 
@@ -47,36 +74,42 @@ class Elastic {
         try {
             // Define mapping
             const itemSchema = {
-              title: { type: "text" },
-              text: { type: "text" },
-              author: { type: "text" },
-              type: { type: "text" }
+                itemId: { type: "integer" },
+                title: { type: "text" },
+                text: { type: "text" },
+                author: { type: "text" },
+                type: { type: "text" }
             };
         
             // Apply mapping
             await this._esclient.indices.putMapping({
-              index: this.ES_INDEX,
-              type: this.ES_TYPE,
+              index: this.ES_INDEX_NAME,
+              type: this.ES_MAPPING_TYPE_NAME,
               include_type_name: true,
               body: { 
                 properties: itemSchema
               } 
             })
         
-            console.log(`${this.ES_TYPE} mapping created successfully`);
-        
+            Logger.log({
+                location: Elastic.name,
+                info: `${this.ES_MAPPING_TYPE_NAME} mapping created successfully`
+            });        
           } catch (err) {
-            console.error("An error occurred while setting the mapping");
-            console.error(err);
+            Logger.error({
+                error: err,
+                location: Elastic.name,
+                info: `An error occurred while creating the ${this.ES_MAPPING_TYPE_NAME} mapping`
+            });
           }
     }
 
     // Searches and returns items matching a query
-    async getItem(q: string) {
+    async searchItem(q: string) {
         // Search
         const { body: { hits } } = await this._esclient.search<SearchResponse<ESItem>>({
-            index: this.ES_INDEX, 
-            type: this.ES_TYPE,
+            index: this.ES_INDEX_NAME, 
+            type: this.ES_MAPPING_TYPE_NAME,
             body: {
                 query: {
                     multi_match: {
@@ -88,29 +121,72 @@ class Elastic {
                 }
             }
         });
-        
+
         // Get important data
-        const values = hits.hits.map((hit) => {
+        const values = this.processHits(hits);
+        
+        return values;    
+    }
+
+    // Search for an item by itemId
+    async getItemById(id: number) {
+        const { body: { hits }} = await this._esclient.search<SearchResponse<ESItem>>({
+            index: this.ES_INDEX_NAME,
+            type: this.ES_MAPPING_TYPE_NAME,
+            body: {
+                query: {
+                    match: {
+                        itemId: {
+                            query: id
+                        }
+                    }
+                }
+            }
+        });
+
+        // Get important data
+        const values = await this.processHits(hits);
+        
+        return values[0];
+    }
+
+    // Saves new item into elasticsearch
+    async addItem(item: ESItem) {
+        // Insert new item
+        return await this._esclient.index({
+            index: this.ES_INDEX_NAME,
+            type: this.ES_MAPPING_TYPE_NAME,
+            refresh: true,
+            body: { ...item }
+        });
+    }
+
+    // Updates existing item
+    async updateItem(id: string, item: ESItem) {
+        return await this._esclient.update({
+            index: this.ES_INDEX_NAME,
+            id: id,
+            refresh: true,
+            body: {
+                doc: {
+                    ...item
+                }
+            }
+        });
+    }
+
+    // Extract the relevant information from hits
+    private async processHits(hits: SearchHitsMetadata<ESItem>) {
+        return hits.hits.map((hit) => {
             return {
                 id: hit._id,
+                itemId: hit._source?.itemId,
                 score: hit._score,
                 title: hit._source?.title,
                 by: hit._source?.author,
                 text: hit._source?.text,
                 type: hit._source?.type,
             }
-        });
-        
-        return values;    
-    }
-
-    // Saves new item into elasticsearch
-    async addItem(item: ESItem) {
-        // Insert new item
-        return this._esclient.index({
-            index: this.ES_INDEX,
-            type: this.ES_TYPE,
-            body: { ...item }
         });
     }
 }

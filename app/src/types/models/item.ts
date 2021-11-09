@@ -21,7 +21,9 @@ export interface ItemAttrs {
 
 export interface ItemCreationAttrs extends ItemAttrs {};
 
-export interface ItemInstance extends Model<ItemAttrs, ItemCreationAttrs>, ItemAttrs {
+export interface ItemInstance extends Model<
+    ItemAttrs, ItemCreationAttrs
+>, ItemAttrs {
     createdAt: Date;
     updatedAt: Date;
 }
@@ -32,6 +34,10 @@ export interface FetchedItem extends Omit<ItemAttrs, 'itemId'> {
     parent?: number;
 }
 
-export interface SentItem extends ItemAttrs {
-    kids: (SentItem|null)[];
+export interface ItemWithParentId extends ItemAttrs {
+    parentId: number|null;
+}
+
+export interface SentItem extends ItemWithParentId {
+    kids?: (SentItem|null)[];
 }

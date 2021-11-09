@@ -1,54 +1,32 @@
-import cron from 'node-cron';
-
 import { app } from './app';
-import { sequelize } from './connection';
+import { sequelize } from './sequelize';
 import { elastic } from './elastic';
 
-import { fetchAndProcessItem } from './controllers/fcns/fetchAndProcessItem';
-import { Item } from './models/Item';
+import { Cron } from './util/classes/Cron/Cron';
+import { Checker } from './util/classes/Checker';
+import { Logger } from './util/classes/Logger';
 
-import { ItemTypesEnum } from './types/models/item';
+// Check environment setup
+Checker.checkEnvironment();
 
-import { checkEnvironment } from './util/checkEnvironment';
-
-checkEnvironment();
-
-const PORT = process.env.PORT || 8080;
-console.log('Connecting to database...');
+// Connect to db
+Logger.log({ location: 'index.ts', info: 'Connecting to database...' });
 sequelize.sync(/* { force: true } */).then(() => {
-    console.log('Connected to database!');
-
-    console.log('Connecting to elasticsearch...');
-    elastic.checkConnection().then(async () => {
-        console.log('Connected to elasticsearch!');
-
-        // Schedule synchronizing
-        cron.schedule('0 0 * * *', async () => {
-            console.log('Synchornizing items...');
-
-            const allStories = await Item.findAll({
-                where: { type: ItemTypesEnum.story }
-            });
+    Logger.log({ location: 'index.ts', info: 'Connected to database!' });
     
-            for (const story of allStories) {
-                await fetchAndProcessItem(story.itemId);
-            }
-    
-            console.log('Items synchornized!');
-        });
-
-        // Init elasticsearch
-        // elastic.esclient.indices.delete({ index: ES_INDEX });
-        const elasticIndex = await elastic.esclient.indices.exists({
-            index: elastic.ES_INDEX
-        });
-        if (!elasticIndex) {
-            await elastic.createIndex();
-            await elastic.setItemMapping();
-        }
-
+    // Connect to elasticsearch
+    // and initialize index and mapping
+    Logger.log({ location: 'index.ts', info: 'Connecting to elasticsearch...' });
+    elastic.checkConnection({ init: true/* , force: true */ }).then(async () => {
+        Logger.log({ location: 'index.ts', info: 'Connected to elasticsearch!' });
+        
+        // Schedule CRON tasks
+        Cron.scheduleTasks();
+        
+        // Listen
+        const PORT = process.env.PORT || 8080;
         app.listen(PORT, () => {
-            console.log(`Listening on port ${PORT}!`);
+            Logger.log({ location: 'index.ts', info: `Listening on port ${PORT}!` });
         });
     });
 })

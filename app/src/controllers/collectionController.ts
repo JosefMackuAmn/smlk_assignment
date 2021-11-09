@@ -1,16 +1,18 @@
 import { Request, Response } from "express";
+import { QueryTypes } from "sequelize";
+
+import { sequelize } from "../sequelize";
 
 import { SourceExistsError } from "../errors/SourceExistsError";
 import { NotFoundError } from "../errors/NotFoundError";
 
 import { Collection } from "../models/Collection";
 import { CollectionItem } from "../models/CollectionItem";
-import { Item } from "../models/Item";
-import { asyncMap } from "../util/asyncMap";
-import { ItemHierarchy } from "../models/ItemHierarchy";
 
-import { SentItem } from "../types/models/item";
+import { ItemWithParentId } from "../types/models/item";
 import { SentCollection } from "../types/models/collection";
+
+import { arrayToTree } from "../util/functions/arrayToTree";
 
 export const postCollection = async (req: Request, res: Response) => {
     const { name }: { name: string } = req.body;
@@ -47,76 +49,33 @@ export const getCollection = async (req: Request, res: Response) => {
         stories: []
     }
 
-    // Retrieve story ids
-    const storyIds = await CollectionItem.findAll({
-        where: { collectionId: collection.collectionId },
-        attributes: {
-            include: ['itemId']
-        }
-    });
+    // Retrieve items
+    const items = await sequelize.query<ItemWithParentId>(`
+        WITH RECURSIVE
+        itemsWithParentIdInCollection AS (
+            -- Select all items in collection and append their parentId
+            SELECT i1.*, ih1.parentId FROM (
+                SELECT i.* FROM items i
+                    JOIN collectionItems ci ON ci.itemId = i.itemId
+                    WHERE ci.collectionId = ${collection.collectionId} ) i1
+                JOIN itemHierarchies ih1 ON ih1.itemId = i1.itemId
+        ), tree AS (
+            -- Select top-level items for a given collection
+            SELECT * FROM itemsWithParentIdInCollection
+                WHERE parentId IS NULL
+            UNION ALL
+            -- Recursively select items with already selected items as parents
+            SELECT i2.* FROM itemsWithParentIdInCollection i2
+                JOIN tree t ON t.itemId = i2.parentId
+        )
+        SELECT
+            itemId, deleted, type, 'by', time, text,
+            dead, url, score, title, descendants, parentId
+        FROM tree;
+    `, { type: QueryTypes.SELECT });
 
-    // Retrieve stories
-    const stories = await asyncMap(storyIds, async story => {
-        const stories = await Item.findByPk(story.itemId);
-        return stories;
-    });
-    data.stories = stories.map(story => {
-        if (!story) return null;
-        const item: SentItem = {
-            itemId: story.itemId,
-            deleted: story.deleted,
-            type: story.type,
-            by: story.by,
-            time: story.time,
-            text: story.text,
-            dead: story.dead,
-            url: story.url,
-            score: story.score,
-            title: story.title,
-            descendants: story.descendants,
-            kids: []
-        }
-        return item;
-    })
-
-    // Populate kids
-    const populateKids = async (item: SentItem|null) => {
-        if (!item) return;
-
-        // Get kid ids
-        const kidIds = await ItemHierarchy.findAll({
-            where: { parentId: item.itemId }
-        });
-
-        // Get kid instances
-        const kids = await asyncMap(kidIds, async (kid) => {
-            const kidItem = await Item.findByPk(kid.itemId);
-            if (!kidItem) return null;
-
-            const kidItemToSend: SentItem = {
-                itemId: kidItem.itemId,
-                deleted: kidItem.deleted,
-                type: kidItem.type,
-                by: kidItem.by,
-                time: kidItem.time,
-                text: kidItem.text,
-                dead: kidItem.dead,
-                url: kidItem.url,
-                score: kidItem.score,
-                title: kidItem.title,
-                descendants: kidItem.descendants,
-                kids: []
-            }
-
-            return kidItemToSend;
-        });
-
-        // Recursively populate nested kids
-        await asyncMap(kids, populateKids);
-
-        item.kids = kids;
-    }
-    await asyncMap(data.stories, populateKids);
+    // Create item tree
+    data.stories = arrayToTree(items);
 
     res.send(data);
 }

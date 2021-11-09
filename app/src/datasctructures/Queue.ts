@@ -15,9 +15,10 @@ class Queue<T> {
     // Private function executed on enqueue
     private _onEnqueue: (() => any)|null = null;
 
-    // Variables needed to determine when to resolve listenersDone
+    // Variables needed to resolve listenersDone
     private runningListeners = 0;
     private resolveListenersDoneHook: PromiseResolveRejectFunction|null = null;
+    private rejectListenersDoneHook: PromiseResolveRejectFunction|null = null;
     private isListenersDonePending = false;
 
     // Variable indicating whether all onEnqueue listeners
@@ -31,7 +32,18 @@ class Queue<T> {
             // resolving listenersDone when no more
             // listeners are running
             this._onEnqueue = async () => {
-                await cb();
+                try {
+                    await cb();
+                } catch (err) {
+                    this.isListenersDonePending = false;
+                    if (this.rejectListenersDoneHook) {
+                        this.rejectListenersDoneHook(false);
+                    }         
+                    this.rejectListenersDoneHook = null;
+                    this.resolveListenersDoneHook = null;
+                    this.runningListeners--;
+                    return;
+                }
                 this.runningListeners--;
 
                 if (!this.runningListeners) {
@@ -41,6 +53,7 @@ class Queue<T> {
                         this.resolveListenersDoneHook(true);
                     }
                     this.resolveListenersDoneHook = null;
+                    this.rejectListenersDoneHook = null;
                     
                 }
             };
@@ -67,13 +80,16 @@ class Queue<T> {
             // and hook its resolve function
             if (!this.isListenersDonePending) {
                 this.isListenersDonePending = true;
-                this.listenersDone = new Promise((resolve) => {
+                this.listenersDone = new Promise((resolve, reject) => {
                     this.resolveListenersDoneHook = resolve;
+                    this.rejectListenersDoneHook = reject;
                 });
             }
 
+            // Increase the number of running listeners
             this.runningListeners++;
 
+            // Call _onEnqueue function
             this._onEnqueue();
         };
     }

@@ -8,9 +8,12 @@ export interface CollectionAttrs {
     userNick: string;
 }
 
-export interface CollectionCreationAttrs extends Optional<CollectionAttrs, 'collectionId'> {};
+export interface CollectionCreationAttrs
+    extends Optional<CollectionAttrs, 'collectionId'> {};
 
-export interface CollectionInstance extends Model<CollectionAttrs, CollectionCreationAttrs>, CollectionAttrs {
+export interface CollectionInstance extends Model<
+    CollectionAttrs, CollectionCreationAttrs
+>, CollectionAttrs {
     createdAt: Date;
     updatedAt: Date;
 };

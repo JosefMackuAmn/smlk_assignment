@@ -1,6 +1,6 @@
 import { DataTypes } from "sequelize";
 
-import { sequelize } from '../connection';
+import { sequelize } from '../sequelize';
 
 import { UserAttrs, UserInstance } from "../types/models/user";
 

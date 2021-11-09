@@ -1,10 +1,15 @@
 import { DataTypes } from "sequelize";
 
-import { sequelize } from '../connection';
+import { sequelize } from '../sequelize';
 
-import { CollectionItemAttrs, CollectionItemInstance } from "../types/models/collectionItem";
+import {
+    CollectionItemAttrs,
+    CollectionItemInstance
+} from "../types/models/collectionItem";
 
-const CollectionItem = sequelize.define<CollectionItemInstance, CollectionItemAttrs>('collectionItem', {
+const CollectionItem = sequelize.define<
+    CollectionItemInstance, CollectionItemAttrs
+>('collectionItem', {
     collectionItemId: {
         type: DataTypes.INTEGER,
         primaryKey: true,

@@ -5,7 +5,7 @@ import { NotFoundError } from "../errors/NotFoundError";
 import { Collection } from "../models/Collection";
 import { CollectionItem } from "../models/CollectionItem";
 
-import { fetchStory } from "./fcns/fetchStory";
+import { fetchStory } from "../util/functions/fetchStory";
 
 export const postStory = async (req: Request, res: Response) => {
     const { collectionName } = req.params;
@@ -19,7 +19,6 @@ export const postStory = async (req: Request, res: Response) => {
     if (!collection) throw new NotFoundError();
 
     // Fetch and process item & nested items
-    // await fetchAndProcessItem(storyId, collection.collectionId, true);
     await fetchStory(storyId, collection.collectionId);
 
     res.sendStatus(201);

@@ -5,12 +5,8 @@ import { elastic } from '../elastic';
 export const getSearch = async (req: Request, res: Response, next: NextFunction) => {
     const { q } = req.query as { q: string };
 
-    let data;
-    try {
-        data = await elastic.getItem(q);
-    } catch (err) {
-        next(err);
-    }
+    // Search for matching items
+    const data = await elastic.searchItem(q);
 
     res.send(data);
 }

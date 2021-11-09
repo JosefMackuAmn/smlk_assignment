@@ -8,9 +8,13 @@ export interface UserAttrs {
 
 export interface UserCreationAttrs extends UserAttrs {};
 
-export interface UserInstance extends Model<UserAttrs, UserCreationAttrs>, UserAttrs {
+export interface UserInstance extends Model<
+    UserAttrs, UserCreationAttrs
+>, UserAttrs {
     createdAt: Date;
     updatedAt: Date;
 
-    createCollection: HasManyCreateAssociationMixin<ModelCtor<CollectionInstance>>;
+    createCollection: HasManyCreateAssociationMixin<
+        ModelCtor<CollectionInstance>
+    >;
 };

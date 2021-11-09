@@ -2,28 +2,19 @@ import supertest from "supertest";
 import fetch from "node-fetch";
 
 import { app } from "../../app";
+
 import { CollectionItem } from "../../models/CollectionItem";
 import { Item } from "../../models/Item";
+import { FetchedItem } from "../../types/models/item";
 
 import { getJwt } from "./util/getJwt";
 import { createCollection } from "./util/createCollection";
-
-import { FetchedItem } from "../../types/models/item";
-import { ItemHierarchy } from "../../models/ItemHierarchy";
-import { Collection } from "../../models/Collection";
-import { User } from "../../models/User";
-import { sequelize } from "../../connection";
+import { Clear } from "./util/Clear";
 
 describe('Story routes', () => {
     beforeEach(async () => {
-        await ItemHierarchy.drop();
-        await CollectionItem.drop();
-        await Item.drop();
-        await Collection.drop();
-        await User.drop();
-        await sequelize.sync({ force: true });
-    
-        jest.clearAllMocks();
+        await Clear.clearDB();
+        await Clear.clearMocks();
     });
     
     describe('POST /collection/:collectionName/:storyId', () => {
@@ -116,7 +107,7 @@ describe('Story routes', () => {
                 .expect(201)
     
             const collectionItemsCount = await CollectionItem.count();
-            expect(collectionItemsCount).toEqual(1);
+            expect(collectionItemsCount).toEqual(2);
     
             const itemCount = await Item.count();
             expect(itemCount).toEqual(2);

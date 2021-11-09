@@ -19,8 +19,12 @@ const validators = [
         .withMessage('password has to be at least 5 characters long')
 ];
 
-router.post('', validators, validate, ash(authenticationController.postNewUser));
+router.post(
+    '', validators, validate, ash(authenticationController.postNewUser)
+);
 
-router.post('/login', validators, validate, ash(authenticationController.postLogin));
+router.post(
+    '/login', validators, validate, ash(authenticationController.postLogin)
+);
 
 export { router as authenticationRouter };

@@ -1,10 +1,15 @@
 import { DataTypes } from "sequelize";
 
-import { sequelize } from '../connection';
+import { sequelize } from '../sequelize';
 
-import { ItemHierarchyAttrs, ItemHierarchyInstance } from "../types/models/itemHierarchy";
+import {
+    ItemHierarchyAttrs,
+    ItemHierarchyInstance
+} from "../types/models/itemHierarchy";
 
-const ItemHierarchy = sequelize.define<ItemHierarchyInstance, ItemHierarchyAttrs>('itemHierarchy', {
+const ItemHierarchy = sequelize.define<
+    ItemHierarchyInstance, ItemHierarchyAttrs
+>('itemHierarchy', {
     hierarchyId: {
         type: DataTypes.INTEGER,
         primaryKey: true,

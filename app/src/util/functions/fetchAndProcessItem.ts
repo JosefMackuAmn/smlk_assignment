@@ -7,13 +7,17 @@ import { NotFoundError } from '../../errors/NotFoundError';
 
 import { Item } from "../../models/Item";
 import { CollectionItem } from "../../models/CollectionItem";
-
-import { asyncMap } from "../../util/asyncMap";
 import { ItemHierarchy } from "../../models/ItemHierarchy";
+
+import { asyncMap } from "./asyncMap";
+import { Logger } from '../classes/Logger';
 
 import { FetchedItem, ItemTypesEnum } from '../../types/models/item';
 import { HACKER_NEWS_API } from '../../constants';
 
+/**
+ * @deprecated Inefficient, use fetchStory function instead
+ */
 const fetchAndProcessItem = async (itemId: number, collectionId?: number, firstLevel: boolean = false) => {
     // Fetch the item
     const itemData = await fetch(`${HACKER_NEWS_API}/item/${itemId}.json`);
@@ -77,13 +81,18 @@ const fetchAndProcessItem = async (itemId: number, collectionId?: number, firstL
     // Try to save the item into the es
     try {
         await elastic.addItem({
+            itemId: item.itemId,
             type: item.type,
             text: item.text || '',
             author: item.by || '',
             title: item.title || ''
         });
     } catch (err) {
-        console.log(`Couldn't save item ${item.itemId} into elasticsearch`);
+        Logger.error({
+            location: 'fetchAndProcessItem function',
+            error: err,
+            info: `Couldn't save item ${item.itemId} into elasticsearch`
+        });
     }
 
     // Recursively fetch and process kid items

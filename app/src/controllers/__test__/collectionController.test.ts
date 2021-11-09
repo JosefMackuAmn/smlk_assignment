@@ -2,28 +2,20 @@ import supertest from 'supertest';
 import fetch from 'node-fetch';
 
 import { app } from '../../app';
+
 import { Collection } from '../../models/Collection';
+import { CollectionItem } from '../../models/CollectionItem';
 
 import { FetchedItem } from '../../types/models/item';
 
 import { getJwt } from './util/getJwt';
 import { createCollection } from './util/createCollection';
-import { ItemHierarchy } from '../../models/ItemHierarchy';
-import { CollectionItem } from '../../models/CollectionItem';
-import { Item } from '../../models/Item';
-import { User } from '../../models/User';
-import { sequelize } from '../../connection';
+import { Clear } from './util/Clear';
 
 describe('Collection routes', () => {
     beforeEach(async () => {
-        await ItemHierarchy.drop();
-        await CollectionItem.drop();
-        await Item.drop();
-        await Collection.drop();
-        await User.drop();
-        await sequelize.sync({ force: true });
-    
-        jest.clearAllMocks();
+        await Clear.clearDB();
+        await Clear.clearMocks();
     });
     
     describe('POST /collection', () => {
@@ -191,6 +183,9 @@ describe('Collection routes', () => {
     
             const collCount = await Collection.count();
             expect(collCount).toEqual(0);
+
+            const collItemsCount = await CollectionItem.count();
+            expect(collItemsCount).toEqual(0);
         });
     });
 });

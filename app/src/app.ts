@@ -8,11 +8,11 @@ import * as errorController from './controllers/errorController';
 
 import { isAuthenticated } from './middleware/isAuthenticated';
 
-import { associations } from './models/associations';
+import { ModelAssociations } from './util/classes/ModelAssociations';
 
 const app = express();
 
-// Configuration
+// Configuration and preprocessing
 app.use(express.json());
 app.use((req: Request, res: Response, next: NextFunction) => {
     res.set('Content-Type', 'application/json');
@@ -29,7 +29,7 @@ app.use('/collection', isAuthenticated, storyRouter);
 app.use(errorController.notFoundHandler);
 app.use(errorController.errorHandler);
 
-// Create DB tables associations
-associations();
+// Create model associations
+ModelAssociations.create();
 
 export { app };

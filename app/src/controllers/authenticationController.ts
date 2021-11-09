@@ -43,6 +43,7 @@ export const postLogin = async (req: Request, res: Response) => {
     const doesPasswordMatch = await bcrypt.compare(password, user.password);
     if (!doesPasswordMatch) throw new InvalidCredentialsError();
 
+    // Create JWT
     const token = jwt.sign({ nick }, process.env.TOKEN_KEY!, {
         expiresIn: '2h'
     });

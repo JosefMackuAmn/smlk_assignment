@@ -14,7 +14,9 @@ router.post('', [
         .isLength({ max: 20 })
         .withMessage('maximum name length is 20')
 ], validate, ash(collectionController.postCollection));
+
 router.get('/:collectionName', ash(collectionController.getCollection));
+
 router.delete('/:collectionName', ash(collectionController.deleteCollection));
 
 export { router as collectionRouter };

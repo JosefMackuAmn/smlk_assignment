@@ -4,23 +4,14 @@ import jwt from 'jsonwebtoken';
 import { app } from '../../app';
 import { User } from '../../models/User';
 
+import { Clear } from './util/Clear';
+
 import { DecodedJwt } from '../../types/misc';
-import { ItemHierarchy } from '../../models/ItemHierarchy';
-import { CollectionItem } from '../../models/CollectionItem';
-import { Item } from '../../models/Item';
-import { Collection } from '../../models/Collection';
-import { sequelize } from '../../connection';
 
 describe('Authentication routes', () => {
     beforeEach(async () => {
-        await ItemHierarchy.drop();
-        await CollectionItem.drop();
-        await Item.drop();
-        await Collection.drop();
-        await User.drop();
-        await sequelize.sync({ force: true });
-    
-        jest.clearAllMocks();
+        await Clear.clearDB();
+        await Clear.clearMocks();
     });
 
     describe('POST /auth', () => {

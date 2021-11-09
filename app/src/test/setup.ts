@@ -1,7 +1,7 @@
 process.env.TOKEN_KEY = 'test';
 
-import { sequelize } from '../connection';
-import { checkEnvironment } from '../util/checkEnvironment';
+import { sequelize } from '../sequelize';
+import { Checker } from '../util/classes/Checker';
 
 jest.setTimeout(25000);
 
@@ -10,7 +10,7 @@ jest.mock('node-fetch');
 // const mockedFetch = fetch as jest.Mocked<typeof fetch>;
 
 beforeAll(async () => {
-    checkEnvironment();
+    Checker.checkEnvironment();
 });
 
 afterAll(async () => {

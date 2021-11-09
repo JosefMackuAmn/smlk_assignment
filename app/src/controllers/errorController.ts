@@ -1,6 +1,8 @@
 import { NextFunction, Request, Response } from "express";
 
 import { CustomError } from "../errors/CustomError";
+import { CustomErrorMessage } from "../types/errors";
+import { Logger } from "../util/classes/Logger";
 
 // Handle 404 case
 export const notFoundHandler = (req: Request, res: Response) => {
@@ -9,20 +11,27 @@ export const notFoundHandler = (req: Request, res: Response) => {
 
 // Handle other errors
 export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
+    // Handle expected custom errors
     if (err instanceof CustomError) {
         return res.status(err.statusCode).send({
             errors: err.serializeErrors()
         });
     }
     
-    console.log("---------------------------------------");
-    console.log(new Date().toString());
-    console.log(`${req.method}: ${req.originalUrl}`)
-    console.log("Express error handler:");
-    console.log(err);
-    console.log("---------------------------------------");
+    // Handle unexpected errors
+    Logger.error({
+        location: 'Express error handler',
+        error: err,
+        info: `${req.method}: ${req.originalUrl}`
+    });
+
+    // Create an error message in consistent format
+    const errorMessage: CustomErrorMessage[] = [{
+        message: 'Unexpected error'
+    }];
+
     res.status(500).send({
-        errors: [{ message: "Unexpected error" }],
+        errors: errorMessage,
     });
     
 };
