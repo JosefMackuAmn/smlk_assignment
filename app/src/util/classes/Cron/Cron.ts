@@ -8,6 +8,4 @@ class Cron {
     }
 }
 
-
-
 export { Cron };
