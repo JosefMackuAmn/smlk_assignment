@@ -3,7 +3,7 @@ import { validationResult } from "express-validator";
 
 import { RequestValidationError } from "../errors/RequestValidationError";
 
-// Ensures expected input is valid
+// Ensures expected endpoint input is valid
 const validate = (req: Request, res: Response, next: NextFunction) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
