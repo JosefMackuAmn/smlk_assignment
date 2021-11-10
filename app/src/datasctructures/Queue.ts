@@ -16,7 +16,7 @@ class Queue<T> {
     public length = 0;
 
     // Private function executed on enqueue
-    private _onEnqueue: OnEnqueueFunction = null;
+    private _onEnqueue: OnEnqueueFunction|null = null;
 
     // Variables needed to resolve listenersDone
     private runningListeners = 0;
@@ -29,7 +29,7 @@ class Queue<T> {
     public listenersDone: Promise<boolean> = Promise.resolve(true);
 
     // Setter for a function executed on enqueue
-    set onEnqueue(cb: OnEnqueueFunction) {
+    set onEnqueue(cb: OnEnqueueFunction|null) {
         if (cb) {
             // Create a wrapper around a provided cb
             // resolving listenersDone when no more
