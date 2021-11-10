@@ -140,30 +140,4 @@ describe('class Queue', () => {
 
         expect(testValues).toEqual([0,1,2,3,4])
     });
-    
-    it('resolves Queue.listenersDone on completion of all listeners', async () => {
-        const queue = new Queue<number>();
-
-        const testValues: number[] = [];
-
-        queue.onEnqueue = async () => {
-            const value = queue.dequeue();
-            return await new Promise((resolve) => {
-                setTimeout(() => {
-                    if (value!==null) {
-                        testValues.push(value);
-                    }
-                    resolve();
-                }, 20);
-            });
-        }
-
-        for (let i = 0; i < 5; i++) {
-            queue.enqueue(i);
-        }
-
-        await queue.listenersDone;
-
-        expect(testValues).toEqual([0,1,2,3,4])
-    });
 })
