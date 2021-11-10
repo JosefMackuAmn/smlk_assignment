@@ -26,7 +26,7 @@ class Queue<T> {
 
     // Variable indicating whether all onEnqueue listeners
     // have been completely executed
-    public listenersDone: Promise<boolean> = Promise.resolve(true);
+    public listenersDone: Promise<void> = Promise.resolve();
 
     // Setter for a function executed on enqueue
     set onEnqueue(cb: OnEnqueueFunction|null) {
@@ -41,7 +41,7 @@ class Queue<T> {
                     // Reject listenersDone
                     this.isListenersDonePending = false;
                     if (this.rejectListenersDoneHook) {
-                        this.rejectListenersDoneHook(false);
+                        this.rejectListenersDoneHook();
                     }         
                     this.rejectListenersDoneHook = null;
                     this.resolveListenersDoneHook = null;
@@ -54,7 +54,7 @@ class Queue<T> {
                     // Resolve listenersDone
                     this.isListenersDonePending = false;
                     if (this.resolveListenersDoneHook) {
-                        this.resolveListenersDoneHook(true);
+                        this.resolveListenersDoneHook();
                     }
                     this.resolveListenersDoneHook = null;
                     this.rejectListenersDoneHook = null;                    

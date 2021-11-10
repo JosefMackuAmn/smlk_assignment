@@ -1,4 +1,4 @@
 export type PromiseResolveRejectFunction = (
-    value: boolean|PromiseLike<boolean>) => void;
+    value: void|PromiseLike<void>) => void;
 
 export type OnEnqueueFunction = () => void|Promise<void>;
